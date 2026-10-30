@@ -1,0 +1,30 @@
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: vaultshare-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vaultshare
+      POSTGRES_PASSWORD: local_dev_password
+      POSTGRES_DB: vaultshare
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vaultshare -d vaultshare"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: vaultshare-mailpit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+volumes:
+  postgres_data:

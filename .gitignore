@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.idea/
+private-storage/*
+!private-storage/.gitkeep
+*.log
+.DS_Store
+Thumbs.db
