@@ -11,7 +11,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "email:test": "tsx src/infrastructure/email/test-email.ts",
-    "storage:test": "tsx tests/storage-test.ts"
+    "storage:test": "tsx tests/storage-test.ts",
+    "authorization:test": "tsx src/authorization/permissions-test.ts"
   },
   "keywords": [],
   "author": "",
