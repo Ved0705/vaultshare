@@ -1,7 +1,7 @@
+
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../shared/app-error.js";
 import { findUserByCognitoSub } from "../modules/users/user.repository.js";
-
 
 export async function requireProvisionedUser(
     req: Request,
@@ -12,7 +12,11 @@ export async function requireProvisionedUser(
         const cognitoSub = req.user?.cognitoSub;
 
         if (!cognitoSub) {
-            throw new AppError(401, "UNAUTHORIZED", "Authentication is required.");
+            throw new AppError(
+                401,
+                "UNAUTHORIZED",
+                "Authentication is required.",
+            );
         }
 
         const user = await findUserByCognitoSub(cognitoSub);
@@ -37,6 +41,7 @@ export async function requireProvisionedUser(
             cognitoSub,
             id: user.id,
         };
+
         next();
     } catch (error) {
         next(error);

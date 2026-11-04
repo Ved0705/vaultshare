@@ -17,6 +17,14 @@ const envSchema = z.object({
     COGNITO_REGION: z.string().min(1),
     COGNITO_USER_POOL_ID: z.string().min(1),
     COGNITO_CLIENT_ID: z.string().min(1),
+    VAULT_KEK_BASE64: z.string().refine((value) => {
+        const key = Buffer.from(value, "base64");
+
+        return (
+            key.length === 32 &&
+            key.toString("base64") === value
+        );
+    }, "VAULT_KEK_BASE64 must be a valid base64-encoded 32-byte key"),
 });
 
 const result = envSchema.safeParse(process.env);
@@ -26,5 +34,7 @@ if (!result.success) {
     console.error(z.treeifyError(result.error));
     process.exit(1);
 }
+
+
 
 export const env = result.data;
