@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "email:test": "tsx src/infrastructure/email/test-email.ts",
     "storage:test": "tsx tests/storage-test.ts",
-    "authorization:test": "tsx src/authorization/permissions-test.ts"
+    "authorization:test": "tsx src/authorization/permissions-test.ts",
+    "encryption:test": "tsx src/infrastructure/encryption/encryption-test.ts"
   },
   "keywords": [],
   "author": "",
