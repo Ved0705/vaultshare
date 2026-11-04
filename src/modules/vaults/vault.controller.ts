@@ -1,6 +1,9 @@
+
 import type { Request, Response, NextFunction } from "express";
 import type { vaults } from "../../db/schema/vaults.js";
+
 import { AppError } from "../../shared/app-error.js";
+import { getAuthenticatedUserId } from "../../shared/get-authenticated-user.js";
 
 import {
     createVaultService,
@@ -43,11 +46,15 @@ export async function createVaultController(
         const parsed = createVaultSchema.safeParse(req.body);
 
         if (!parsed.success) {
-            throw new AppError(400, "VALIDATION_ERROR", "Invalid vault data");
+            throw new AppError(
+                400,
+                "VALIDATION_ERROR",
+                "Invalid vault data",
+            );
         }
 
         const vault = await createVaultService({
-            ownerId: req.user!.id,
+            ownerId: getAuthenticatedUserId(req),
             name: parsed.data.name,
             content: parsed.data.content,
             overallTtlSeconds: parsed.data.overallTtlSeconds,
@@ -58,6 +65,7 @@ export async function createVaultController(
                 ? { folderId: parsed.data.folderId }
                 : {}),
         });
+
         if (!vault) {
             throw new AppError(
                 500,
@@ -75,7 +83,6 @@ export async function createVaultController(
     }
 }
 
-
 export async function listVaultsController(
     req: Request,
     res: Response,
@@ -85,11 +92,15 @@ export async function listVaultsController(
         const parsed = listVaultsQuerySchema.safeParse(req.query);
 
         if (!parsed.success) {
-            throw new AppError(400, "VALIDATION_ERROR", "Invalid pagination");
+            throw new AppError(
+                400,
+                "VALIDATION_ERROR",
+                "Invalid pagination",
+            );
         }
 
         const vaults = await listVaultsService(
-            req.user!.id,
+            getAuthenticatedUserId(req),
             parsed.data.limit,
             parsed.data.offset,
         );
@@ -112,12 +123,16 @@ export async function getVaultController(
         const parsed = vaultIdParamSchema.safeParse(req.params);
 
         if (!parsed.success) {
-            throw new AppError(400, "VALIDATION_ERROR", "Invalid vault ID");
+            throw new AppError(
+                400,
+                "VALIDATION_ERROR",
+                "Invalid vault ID",
+            );
         }
 
         const vault = await getVaultService(
             parsed.data.id,
-            req.user!.id,
+            getAuthenticatedUserId(req),
         );
 
         res.status(200).json({
@@ -139,12 +154,16 @@ export async function updateVaultController(
         const body = updateVaultSchema.safeParse(req.body);
 
         if (!params.success || !body.success) {
-            throw new AppError(400, "VALIDATION_ERROR", "Invalid update data");
+            throw new AppError(
+                400,
+                "VALIDATION_ERROR",
+                "Invalid update data",
+            );
         }
 
         const vault = await updateVaultService(
             params.data.id,
-            req.user!.id,
+            getAuthenticatedUserId(req),
             {
                 ...(body.data.name !== undefined
                     ? { name: body.data.name }
@@ -159,7 +178,11 @@ export async function updateVaultController(
         );
 
         if (!vault) {
-            throw new AppError(404, "VAULT_NOT_FOUND", "Vault not found");
+            throw new AppError(
+                404,
+                "VAULT_NOT_FOUND",
+                "Vault not found",
+            );
         }
 
         res.status(200).json({
