@@ -7,6 +7,7 @@ import { authenticate } from "./middleware/auth.middleware.js";
 import { notFoundHandler } from "./middleware/not-found.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { getCurrentUser } from "./modules/users/user.controller.js";
+import vaultRoutes from "./modules/vaults/vault.routes.js";
 
 const app = express();
 
@@ -29,7 +30,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/api/v1/auth/me", authenticate, getCurrentUser);
-
+app.use("/api/v1/vaults", vaultRoutes);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
