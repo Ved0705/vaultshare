@@ -1,7 +1,9 @@
-
 import http from "node:http";
 import crypto from "node:crypto";
-
+const TEST_MODE = process.argv[2] ?? "owner";
+const TEST_SHARE_CODE = process.env.TEST_SHARE_CODE;
+const TEST_PASSPHRASE =
+    process.env.TEST_PASSPHRASE ?? "VaultShare-Integration-Test-2026!";
 const CLIENT_ID = "423hhegfeq88sr8oppgr7b10r6";
 const CALLBACK_URL = "http://localhost:5174/";
 const COGNITO_DOMAIN =
@@ -31,6 +33,7 @@ authorizeUrl.search = new URLSearchParams({
     code_challenge: challenge,
     code_challenge_method: "S256",
 }).toString();
+
 
 function assert(condition, message) {
     if (!condition) {
@@ -224,8 +227,7 @@ async function runVaultTests(accessToken) {
 async function runShareTests(accessToken, vaultId, ownerId) {
     console.log("\n--- Share Creation Integration Tests ---");
 
-    const passphrase = `TestPassphrase-${crypto.randomUUID()}!`;
-
+    const passphrase = TEST_PASSPHRASE;
     const sharePayload = {
         readerId: READER_USER_ID,
         permissions: ["READ", "WRITE"],
@@ -388,6 +390,103 @@ async function runShareTests(accessToken, vaultId, ownerId) {
 
     console.log("\nAll Share Creation integration tests passed!");
     console.log("Test share ID:", share.shareCode);
+    return {
+        shareCode: share.shareCode,
+        passphrase,
+    };
+}
+async function runShareAccessTests(accessToken) {
+    console.log("\n--- Share Access Integration Tests ---");
+
+    assert(TEST_SHARE_CODE, "Set TEST_SHARE_CODE before reader mode.");
+
+    // 1. Open share with correct passphrase
+    const openResult = await apiRequest(
+        `/shares/${TEST_SHARE_CODE}/open`,
+        accessToken,
+        {
+            method: "POST",
+            body: JSON.stringify({
+                passphrase: TEST_PASSPHRASE,
+            }),
+        },
+    );
+
+    assert(
+        openResult.status === 200,
+        `Share opening failed: ${JSON.stringify(openResult.data)}`,
+    );
+
+    const openedShare = openResult.data.data;
+
+    assert(
+        typeof openedShare.content === "string",
+        "READ permission did not return original content",
+    );
+
+    assert(
+        openedShare.permissions.includes("READ"),
+        "READ permission missing",
+    );
+
+    assert(
+        openedShare.successfulOpenCount === 1,
+        "Successful open count should be 1",
+    );
+
+    assert(
+        !JSON.stringify(openResult.data).includes("encryptedDek"),
+        "Encrypted DEK exposed",
+    );
+
+    console.log("1. Valid passphrase and share opening: PASS (200)");
+    console.log("2. READ permission content delivery: PASS");
+    console.log("3. Successful access count: PASS");
+
+    // 2. Incorrect passphrase must be rejected
+    const invalidResult = await apiRequest(
+        `/shares/${TEST_SHARE_CODE}/open`,
+        accessToken,
+        {
+            method: "POST",
+            body: JSON.stringify({
+                passphrase: "DefinitelyWrongPassphrase123!",
+            }),
+        },
+    );
+
+    assert(
+        invalidResult.status === 401,
+        `Incorrect passphrase should return 401, got ${invalidResult.status}`,
+    );
+
+    console.log("4. Incorrect passphrase rejection: PASS (401)");
+
+    // 3. Failed attempts must not consume successful opens
+    const secondOpenResult = await apiRequest(
+        `/shares/${TEST_SHARE_CODE}/open`,
+        accessToken,
+        {
+            method: "POST",
+            body: JSON.stringify({
+                passphrase: TEST_PASSPHRASE,
+            }),
+        },
+    );
+
+    assert(
+        secondOpenResult.status === 200,
+        "Valid passphrase failed after one incorrect attempt",
+    );
+
+    assert(
+        secondOpenResult.data.data.successfulOpenCount === 2,
+        "Failed attempt incorrectly consumed an access count",
+    );
+
+    console.log("5. Failed attempt does not consume access: PASS");
+
+    console.log("\nAll Share Access integration tests passed!");
 }
 
 // --------------------------------------------------
@@ -460,27 +559,38 @@ const server = http.createServer(async (req, res) => {
         );
 
         const ownerId = authResult.data.data.id;
-
+        if (TEST_MODE === "owner") {
+            assert(ownerId === OWNER_USER_ID, "Sign in using the owner account.");
+        } else if (TEST_MODE === "reader") {
+            assert(ownerId === READER_USER_ID, "Sign in using the reader account.");
+        } else {
+            throw new Error("Invalid test mode.");
+        }
         console.log("User authentication and provisioning: PASS");
         console.log("User ID:", ownerId);
         console.log("Email verified:", authResult.data.data.emailVerified);
 
         // Ensure the owner account is being used
-        assert(
-            ownerId === OWNER_USER_ID,
-            "Wrong account. Sign in using the original owner account.",
-        );
 
         assert(
             authResult.data.data.emailVerified === true,
             "Owner email is not verified",
         );
 
-        // Run Vault CRUD tests
-        const vaultId = await runVaultTests(tokens.access_token);
+        if (TEST_MODE === "owner") {
+            const vaultId = await runVaultTests(tokens.access_token);
 
-        // Run Share Creation tests
-        await runShareTests(tokens.access_token, vaultId, ownerId);
+            const share = await runShareTests(
+                tokens.access_token,
+                vaultId,
+                ownerId,
+            );
+
+            console.log("\nOWNER TEST COMPLETE");
+            console.log("Share Code:", share.shareCode);
+        } else {
+            await runShareAccessTests(tokens.access_token);
+        }
 
         res.writeHead(200, { "Content-Type": "text/plain" });
         res.end("All VaultShare integration tests passed. Check terminal.");
