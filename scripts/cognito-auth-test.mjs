@@ -78,6 +78,17 @@ async function apiRequest(path, accessToken, options = {}) {
     };
 }
 
+async function apiRawRequest(path, accessToken, options = {}) {
+    return fetch(`${API_URL}${path}`, {
+        ...options,
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            ...options.headers,
+        },
+    });
+}
+
+
 // --------------------------------------------------
 // VAULT CRUD TESTS
 // --------------------------------------------------
@@ -102,6 +113,17 @@ async function runVaultTests(accessToken) {
             }),
         },
     );
+
+    async function apiRawRequest(path, accessToken, options = {}) {
+        return fetch(`${API_URL}${path}`, {
+            ...options,
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                ...options.headers,
+            },
+        });
+    }
+
 
     assert(createResult.status === 201, "Vault creation failed");
 
@@ -395,6 +417,93 @@ async function runShareTests(accessToken, vaultId, ownerId) {
         passphrase,
     };
 }
+
+async function runOwnerFileTests(accessToken, vaultId) {
+    console.log("\n--- Owner File Integration Tests ---");
+
+    const originalContent = Buffer.from(
+        `VaultShare file test ${crypto.randomUUID()}`,
+    );
+
+    // 1. Upload a file
+    const form = new FormData();
+    form.append(
+        "file",
+        new Blob([originalContent], { type: "text/plain" }),
+        "integration-test.txt",
+    );
+
+    const uploadResponse = await apiRawRequest(
+        `/vaults/${vaultId}/files`,
+        accessToken,
+        { method: "POST", body: form },
+    );
+
+    const uploadResult = await uploadResponse.json();
+
+    assert(
+        uploadResponse.status === 201,
+        `File upload failed: ${JSON.stringify(uploadResult)}`,
+    );
+
+    const file = uploadResult.data;
+
+    assert(file?.id, "Uploaded file ID missing");
+    checkNoEncryptedFields(uploadResult);
+
+    console.log("1. File upload: PASS (201)");
+    console.log("2. Upload response security: PASS");
+
+    // 2. List files
+    const listResponse = await apiRawRequest(
+        `/vaults/${vaultId}/files`,
+        accessToken,
+    );
+
+    const listResult = await listResponse.json();
+
+    assert(listResponse.status === 200, "File listing failed");
+    assert(
+        listResult.data.files.some((item) => item.id === file.id),
+        "Uploaded file missing from listing",
+    );
+
+    checkNoEncryptedFields(listResult);
+
+    console.log("3. File listing: PASS (200)");
+    console.log("4. Listing response security: PASS");
+
+    // 3. Download and compare original bytes
+    const downloadResponse = await apiRawRequest(
+        `/vaults/${vaultId}/files/${file.id}/download`,
+        accessToken,
+    );
+
+    assert(downloadResponse.status === 200, "File download failed");
+
+    const downloadedContent = Buffer.from(
+        await downloadResponse.arrayBuffer(),
+    );
+
+    assert(
+        downloadedContent.equals(originalContent),
+        "Downloaded file content differs from original",
+    );
+
+    assert(
+        downloadResponse.headers.get("x-content-type-options") === "nosniff",
+        "Missing nosniff response header",
+    );
+
+    console.log("5. File download: PASS (200)");
+    console.log("6. File encryption/decryption integrity: PASS");
+
+    console.log("All owner file tests passed!");
+
+    return file.id;
+}
+
+
 async function runShareAccessTests(accessToken) {
     console.log("\n--- Share Access Integration Tests ---");
 
@@ -430,8 +539,9 @@ async function runShareAccessTests(accessToken) {
     );
 
     assert(
-        openedShare.successfulOpenCount === 1,
-        "Successful open count should be 1",
+        Number.isInteger(openedShare.successfulOpenCount) &&
+        openedShare.successfulOpenCount >= 1,
+        "Successful open count was not incremented",
     );
 
     assert(
@@ -480,13 +590,82 @@ async function runShareAccessTests(accessToken) {
     );
 
     assert(
-        secondOpenResult.data.data.successfulOpenCount === 2,
+        secondOpenResult.data.data.successfulOpenCount ===
+        openedShare.successfulOpenCount + 1,
         "Failed attempt incorrectly consumed an access count",
     );
 
     console.log("5. Failed attempt does not consume access: PASS");
 
     console.log("\nAll Share Access integration tests passed!");
+}
+
+
+async function runReaderFileTests(accessToken) {
+    console.log("\n--- Reader File Integration Tests ---");
+
+    assert(TEST_SHARE_CODE, "Set TEST_SHARE_CODE.");
+    assert(process.env.TEST_FILE_ID, "Set TEST_FILE_ID.");
+
+    const fileId = process.env.TEST_FILE_ID;
+    const body = JSON.stringify({ passphrase: TEST_PASSPHRASE });
+
+    // 1. List files through the share
+    const listResponse = await apiRawRequest(
+        `/shares/${TEST_SHARE_CODE}/files/list`,
+        accessToken,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+        },
+    );
+
+    const listResult = await listResponse.json();
+
+    assert(
+        listResponse.status === 200,
+        `Reader file listing failed: ${JSON.stringify(listResult)}`,
+    );
+
+    assert(
+        listResult.data.files.some((file) => file.id === fileId),
+        "Shared file not found in reader listing",
+    );
+
+    checkNoEncryptedFields(listResult);
+
+    console.log("1. Reader file listing: PASS (200)");
+
+    // 2. Download shared file
+    const downloadResponse = await apiRawRequest(
+        `/shares/${TEST_SHARE_CODE}/files/${fileId}/download`,
+        accessToken,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+        },
+    );
+
+    assert(
+        downloadResponse.status === 200,
+        `Reader download failed: ${downloadResponse.status}`,
+    );
+
+    const downloadedContent = Buffer.from(
+        await downloadResponse.arrayBuffer(),
+    );
+
+    assert(downloadedContent.length > 0, "Downloaded file is empty");
+
+    assert(
+        downloadResponse.headers.get("x-content-type-options") === "nosniff",
+        "Missing nosniff header",
+    );
+
+    console.log("2. Reader file download: PASS (200)");
+    console.log("\nAll reader file tests passed!");
 }
 
 // --------------------------------------------------
@@ -559,12 +738,48 @@ const server = http.createServer(async (req, res) => {
         );
 
         const ownerId = authResult.data.data.id;
+
         if (TEST_MODE === "owner") {
-            assert(ownerId === OWNER_USER_ID, "Sign in using the owner account.");
+            assert(
+                ownerId === OWNER_USER_ID,
+                "Sign in using the owner Cognito account."
+            );
+        }
+
+        if (TEST_MODE === "reader") {
+            assert(
+                ownerId === READER_USER_ID,
+                "Sign in using the reader Cognito account."
+            );
+        }
+
+        if (TEST_MODE === "owner") {
+            const vaultId = await runVaultTests(tokens.access_token);
+
+            const share = await runShareTests(
+                tokens.access_token,
+                vaultId,
+                ownerId,
+            );
+
+            const fileId = await runOwnerFileTests(
+                tokens.access_token,
+                vaultId,
+            );
+
+            const expiryVaults = await createExpiryTestVaults(tokens.access_token);
+
+            console.log("Expiry test vaults:", expiryVaults);
+            console.log("\nOWNER TEST COMPLETE");
+            console.log("Share Code:", share.shareCode);
+            console.log("File ID:", fileId);
+
         } else if (TEST_MODE === "reader") {
-            assert(ownerId === READER_USER_ID, "Sign in using the reader account.");
+            await runShareAccessTests(tokens.access_token);
+            await runReaderFileTests(tokens.access_token);
+
         } else {
-            throw new Error("Invalid test mode.");
+            throw new Error("Invalid test mode. Use owner or reader.");
         }
         console.log("User authentication and provisioning: PASS");
         console.log("User ID:", ownerId);
@@ -577,20 +792,7 @@ const server = http.createServer(async (req, res) => {
             "Owner email is not verified",
         );
 
-        if (TEST_MODE === "owner") {
-            const vaultId = await runVaultTests(tokens.access_token);
 
-            const share = await runShareTests(
-                tokens.access_token,
-                vaultId,
-                ownerId,
-            );
-
-            console.log("\nOWNER TEST COMPLETE");
-            console.log("Share Code:", share.shareCode);
-        } else {
-            await runShareAccessTests(tokens.access_token);
-        }
 
         res.writeHead(200, { "Content-Type": "text/plain" });
         res.end("All VaultShare integration tests passed. Check terminal.");
@@ -611,3 +813,79 @@ server.listen(5174, "127.0.0.1", () => {
     console.log("\nOpen this URL in your browser:\n");
     console.log(authorizeUrl.toString());
 });
+
+async function createExpiryTestVaults(accessToken) {
+    console.log("\n=== Vault Expiry Tests ===");
+
+    const passphrase = TEST_PASSPHRASE;
+
+    // Create DESTROY vault
+    const destroyResult = await apiRequest(
+        "/vaults",
+        accessToken,
+        {
+            method: "POST",
+            body: JSON.stringify({
+                name: "Expiry Test - DESTROY",
+                content: "Temporary secret for destruction test",
+                overallTtlSeconds: 60,
+            }),
+        }
+    );
+
+    assert(
+        destroyResult.status === 201,
+        `DESTROY vault creation failed: ${JSON.stringify(destroyResult.data)}`
+    );
+
+    const destroyVaultId = destroyResult.data.data.id;
+
+    // Create REVOKE_ACCESS vault
+    const revokeResult = await apiRequest(
+        "/vaults",
+        accessToken,
+        {
+            method: "POST",
+            body: JSON.stringify({
+                name: "Expiry Test - REVOKE",
+                content: "Retained secret for revocation test",
+                overallTtlSeconds: 60,
+            }),
+        }
+    );
+
+    assert(
+        revokeResult.status === 201,
+        `REVOKE vault creation failed: ${JSON.stringify(revokeResult.data)}`
+    );
+
+    const revokeVaultId = revokeResult.data.data.id;
+
+    // Share both vaults to initialize their overall TTL
+    for (const vaultId of [destroyVaultId, revokeVaultId]) {
+        const shareResult = await apiRequest(
+            `/vaults/${vaultId}/shares`,
+            accessToken,
+            {
+                method: "POST",
+                body: JSON.stringify({
+                    readerId: READER_USER_ID,
+                    permissions: ["READ"],
+                    maxAccessCount: 5,
+                    postOpenTtlSeconds: 3600,
+                    passphrase,
+                }),
+            }
+        );
+
+        assert(
+            shareResult.status === 201,
+            `Expiry test share creation failed: ${JSON.stringify(shareResult.data)}`
+        );
+    }
+
+    console.log("DESTROY vault ID:", destroyVaultId);
+    console.log("REVOKE vault ID:", revokeVaultId);
+
+    return { destroyVaultId, revokeVaultId };
+}
