@@ -1,7 +1,7 @@
 
 import type { Request, Response, NextFunction } from "express";
 import type { vaults } from "../../db/schema/vaults.js";
-
+import {deleteVaultService} from "./vault.service.js";
 import { AppError } from "../../shared/app-error.js";
 import { getAuthenticatedUserId } from "../../shared/get-authenticated-user.js";
 
@@ -188,6 +188,35 @@ export async function updateVaultController(
         res.status(200).json({
             success: true,
             data: toVaultMetadata(vault),
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+export async function deleteVaultController(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+) {
+    try {
+        const parsed = vaultIdParamSchema.safeParse(req.params);
+
+        if (!parsed.success) {
+            throw new AppError(
+                400,
+                "VALIDATION_ERROR",
+                "Invalid vault ID",
+            );
+        }
+
+        await deleteVaultService(
+            parsed.data.id,
+            getAuthenticatedUserId(req),
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Vault permanently destroyed.",
         });
     } catch (error) {
         next(error);

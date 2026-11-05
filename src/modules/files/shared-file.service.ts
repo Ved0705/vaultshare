@@ -1,11 +1,9 @@
 
-import argon2 from "argon2";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import { files } from "../../db/schema/files.js";
 import { shares } from "../../db/schema/shares.js";
-import { shareCredentials } from "../../db/schema/share-credentials.js";
 import { vaults } from "../../db/schema/vaults.js";
 
 import {
@@ -17,6 +15,7 @@ import {
 } from "./file-storage.service.js";
 
 import { AppError } from "../../shared/app-error.js";
+import { verifySharePassphrase } from "../shares/passphrase-verification.service.js";
 
 interface SharedFileInput {
     shareCode: string;
@@ -25,95 +24,122 @@ interface SharedFileInput {
 }
 
 async function authorizeSharedFileAccess(input: SharedFileInput) {
-    const [result] = await db
-        .select({
-            share: shares,
-            credential: shareCredentials,
-            vault: vaults,
-        })
-        .from(shares)
-        .innerJoin(
-            shareCredentials,
-            eq(shareCredentials.shareId, shares.id),
-        )
-        .innerJoin(
-            vaults,
-            eq(vaults.id, shares.vaultId),
-        )
-        .where(
-            and(
-                eq(shares.shareCode, input.shareCode),
-                eq(shares.readerId, input.readerId),
-            ),
-        )
-        .limit(1);
+    const result = await db.transaction(async (tx) => {
+        const now = new Date();
 
-    if (!result) {
-        throw new AppError(404, "SHARE_NOT_FOUND", "Share not found.");
-    }
+        // Find the share to identify its vault.
+        const [initialShare] = await tx
+            .select()
+            .from(shares)
+            .where(
+                and(
+                    eq(shares.shareCode, input.shareCode),
+                    eq(shares.readerId, input.readerId),
+                ),
+            )
+            .limit(1);
 
-    const { share, credential, vault } = result;
+        if (!initialShare) {
+            throw new AppError(404, "SHARE_NOT_FOUND", "Share not found.");
+        }
 
-    // Verify share and vault availability.
-    if (
-        share.status !== "active" ||
-        vault.status !== "ACTIVE"
-    ) {
-        throw new AppError(
-            410,
-            "SHARE_UNAVAILABLE",
-            "Share is unavailable.",
-        );
-    }
+        // Lock the vault first to maintain consistent lock ordering.
+        const [vault] = await tx
+            .select()
+            .from(vaults)
+            .where(eq(vaults.id, initialShare.vaultId))
+            .for("update")
+            .limit(1);
 
-    const now = new Date();
+        if (!vault || vault.status !== "ACTIVE") {
+            throw new AppError(
+                410,
+                "VAULT_UNAVAILABLE",
+                "Vault is unavailable.",
+            );
+        }
 
-    // Verify overall vault expiry.
-    if (vault.expiresAt && vault.expiresAt <= now) {
-        throw new AppError(
-            410,
-            "SHARE_EXPIRED",
-            "Share has expired.",
-        );
-    }
+        // Lock and re-fetch the share after locking the vault.
+        const [share] = await tx
+            .select()
+            .from(shares)
+            .where(
+                and(
+                    eq(shares.id, initialShare.id),
+                    eq(shares.shareCode, input.shareCode),
+                    eq(shares.readerId, input.readerId),
+                    eq(shares.vaultId, vault.id),
+                ),
+            )
+            .for("update")
+            .limit(1);
 
-    // Reader must open the share before accessing its files.
-    if (!share.firstOpenedAt) {
-        throw new AppError(
-            403,
-            "SHARE_NOT_OPENED",
-            "Open the share before accessing its files.",
-        );
-    }
+        if (!share || share.status !== "active") {
+            throw new AppError(
+                410,
+                "SHARE_UNAVAILABLE",
+                "Share is unavailable.",
+            );
+        }
 
-    // Verify reader-specific post-open expiry.
-    if (
-        share.postOpenExpiresAt &&
-        share.postOpenExpiresAt <= now
-    ) {
-        throw new AppError(
-            410,
-            "SHARE_EXPIRED",
-            "Share access has expired.",
-        );
-    }
+        // Overall vault expiry.
+        if (vault.expiresAt && vault.expiresAt <= now) {
+            throw new AppError(
+                410,
+                "SHARE_EXPIRED",
+                "Share has expired.",
+            );
+        }
 
-    // Verify READ permission.
-    if (!share.permissions.includes("READ")) {
-        throw new AppError(
-            403,
-            "READ_PERMISSION_REQUIRED",
-            "Read permission required.",
-        );
-    }
+        // Reader must open the share before accessing its files.
+        if (!share.firstOpenedAt) {
+            throw new AppError(
+                403,
+                "SHARE_NOT_OPENED",
+                "Open the share before accessing its files.",
+            );
+        }
 
-    // Verify passphrase.
-    const validPassphrase = await argon2.verify(
-        credential.passphraseHash,
-        input.passphrase,
-    );
+        // Reader-specific post-open expiry.
+        if (
+            share.postOpenExpiresAt &&
+            share.postOpenExpiresAt <= now
+        ) {
+            throw new AppError(
+                410,
+                "SHARE_EXPIRED",
+                "Share access has expired.",
+            );
+        }
 
-    if (!validPassphrase) {
+        // Verify READ permission.
+        if (!share.permissions.includes("READ")) {
+            throw new AppError(
+                403,
+                "READ_PERMISSION_REQUIRED",
+                "Read permission required.",
+            );
+        }
+
+        // Verify passphrase and record the attempt.
+        const validPassphrase = await verifySharePassphrase({
+            tx,
+            shareId: share.id,
+            readerId: input.readerId,
+            passphrase: input.passphrase,
+        });
+
+        if (!validPassphrase) {
+            return { kind: "invalid-passphrase" as const };
+        }
+
+        return {
+            kind: "success" as const,
+            vault,
+        };
+    });
+
+    if (result.kind === "invalid-passphrase") {
         throw new AppError(
             401,
             "INVALID_PASSPHRASE",
@@ -121,7 +147,7 @@ async function authorizeSharedFileAccess(input: SharedFileInput) {
         );
     }
 
-    return { share, vault };
+    return { vault: result.vault };
 }
 
 export async function listSharedFilesService(

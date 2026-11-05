@@ -1,7 +1,11 @@
+
 import {
     and,
     desc,
     eq,
+    gt,
+    isNull,
+    or,
 } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
@@ -82,22 +86,44 @@ export async function listVaultsByOwner(
 
 /**
  * Update vault metadata, scoped to its owner.
+ * Enforces expiry and lifecycle restrictions at database level.
  */
 export async function updateVaultMetadata(
     vaultId: string,
     ownerId: string,
     data: VaultMetadataUpdate,
 ) {
+    const now = new Date();
+
     const [vault] = await db
         .update(vaults)
         .set({
             ...data,
-            updatedAt: new Date(),
+            updatedAt: now,
         })
         .where(
             and(
                 eq(vaults.id, vaultId),
                 eq(vaults.ownerId, ownerId),
+
+                // ACTIVE vaults, or expired/revoked REVOKE_ACCESS vaults.
+                or(
+                    eq(vaults.status, "ACTIVE"),
+                    and(
+                        eq(vaults.expiryPolicy, "REVOKE_ACCESS"),
+                        or(
+                            eq(vaults.status, "EXPIRED"),
+                            eq(vaults.status, "REVOKED"),
+                        ),
+                    ),
+                ),
+
+                // DESTROY-policy vaults cannot be updated after expiry.
+                or(
+                    eq(vaults.expiryPolicy, "REVOKE_ACCESS"),
+                    isNull(vaults.expiresAt),
+                    gt(vaults.expiresAt, now),
+                ),
             ),
         )
         .returning();

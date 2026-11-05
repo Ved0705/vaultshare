@@ -1,5 +1,11 @@
-import { randomUUID } from "node:crypto";
 
+import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+
+import { db } from "../../db/client.js";
+import { vaults } from "../../db/schema/vaults.js";
+import { shares } from "../../db/schema/shares.js";
+import { cleanupJobs } from "../../db/schema/cleanup-jobs.js";
 import { AppError } from "../../shared/app-error.js";
 
 import {
@@ -77,14 +83,27 @@ export async function getVaultService(
     }
 
     if (vault.status === "DESTROYED") {
-        throw new AppError(410, "VAULT_DESTROYED", "This vault has been destroyed");
+        throw new AppError(
+            410,
+            "VAULT_DESTROYED",
+            "This vault has been destroyed",
+        );
     }
 
+    const now = new Date();
+
     if (
-        vault.status === "EXPIRED" &&
-        vault.expiryPolicy === "DESTROY"
+        vault.expiryPolicy === "DESTROY" &&
+        (
+            vault.status === "EXPIRED" ||
+            (vault.expiresAt !== null && vault.expiresAt <= now)
+        )
     ) {
-        throw new AppError(410, "VAULT_EXPIRED", "This vault has expired");
+        throw new AppError(
+            410,
+            "VAULT_EXPIRED",
+            "This vault has expired",
+        );
     }
 
     const content = decryptVaultContent(vault.id, {
@@ -140,15 +159,60 @@ export async function updateVaultService(
         throw new AppError(404, "VAULT_NOT_FOUND", "Vault not found");
     }
 
-    if (existingVault.status !== "ACTIVE") {
-        throw new AppError(409, "VAULT_NOT_EDITABLE", "Only active vaults can be updated");
+    if (existingVault.status === "DESTROYED") {
+        throw new AppError(
+            410,
+            "VAULT_DESTROYED",
+            "This vault has been destroyed",
+        );
+    }
+
+    const now = new Date();
+
+    if (
+        existingVault.expiryPolicy === "DESTROY" &&
+        (
+            existingVault.status === "EXPIRED" ||
+            (
+                existingVault.expiresAt !== null &&
+                existingVault.expiresAt <= now
+            )
+        )
+    ) {
+        throw new AppError(
+            410,
+            "VAULT_EXPIRED",
+            "This vault has expired",
+        );
+    }
+
+    const ownerCanManage =
+        existingVault.status === "ACTIVE" ||
+        (
+            existingVault.expiryPolicy === "REVOKE_ACCESS" &&
+            (
+                existingVault.status === "EXPIRED" ||
+                existingVault.status === "REVOKED"
+            )
+        );
+
+    if (!ownerCanManage) {
+        throw new AppError(
+            409,
+            "VAULT_NOT_EDITABLE",
+            "This vault cannot be updated",
+        );
     }
 
     if (
         input.name !== undefined &&
         !input.name.trim()
     ) {
-        throw new AppError(400, "INVALID_VAULT_NAME", "Vault name cannot be empty");
+        throw new AppError(
+            400,
+            "INVALID_VAULT_NAME",
+            "Vault name cannot be empty",
+        );
     }
 
     const updated = await updateVaultMetadata(
@@ -163,8 +227,81 @@ export async function updateVaultService(
     );
 
     if (!updated) {
-        throw new AppError(404, "VAULT_NOT_FOUND", "Vault not found");
+        throw new AppError(
+            404,
+            "VAULT_NOT_FOUND",
+            "Vault not found",
+        );
     }
 
     return updated;
+}
+
+export async function deleteVaultService(
+    vaultId: string,
+    ownerId: string,
+): Promise<void> {
+    await db.transaction(async (tx) => {
+        const [vault] = await tx
+            .select({
+                id: vaults.id,
+                status: vaults.status,
+            })
+            .from(vaults)
+            .where(
+                and(
+                    eq(vaults.id, vaultId),
+                    eq(vaults.ownerId, ownerId),
+                ),
+            )
+            .for("update")
+            .limit(1);
+
+        if (!vault) {
+            throw new AppError(
+                404,
+                "VAULT_NOT_FOUND",
+                "Vault not found.",
+            );
+        }
+
+        if (vault.status === "DESTROYED") {
+            return;
+        }
+
+        const now = new Date();
+
+        await tx
+            .update(vaults)
+            .set({
+                status: "DESTROYED",
+                encryptedContent: "",
+                encryptedDek: "",
+                encryptionNonce: "",
+                encryptionTag: "",
+                updatedAt: now,
+            })
+            .where(eq(vaults.id, vault.id));
+
+        await tx
+            .update(shares)
+            .set({
+                status: "expired",
+                updatedAt: now,
+            })
+            .where(
+                and(
+                    eq(shares.vaultId, vault.id),
+                    eq(shares.status, "active"),
+                ),
+            );
+
+        await tx
+            .insert(cleanupJobs)
+            .values({
+                resourceType: "VAULT",
+                resourceId: vault.id,
+            })
+            .onConflictDoNothing();
+    });
 }

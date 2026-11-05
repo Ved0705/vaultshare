@@ -111,10 +111,18 @@ export const shares = pgTable(
         check(
             "shares_post_open_expiry_check",
             sql`(
-                (${table.firstOpenedAt} IS NULL AND ${table.postOpenExpiresAt} IS NULL)
-                OR
-                (${table.firstOpenedAt} IS NOT NULL AND ${table.postOpenExpiresAt} IS NOT NULL)
-            )`,
+                    (${table.firstOpenedAt} IS NULL
+                        AND ${table.postOpenExpiresAt} IS NULL)
+                        OR
+                        (${table.firstOpenedAt} IS NOT NULL
+                        AND (
+                        (${table.postOpenTtlSeconds} IS NULL
+                        AND ${table.postOpenExpiresAt} IS NULL)
+                        OR
+                        (${table.postOpenTtlSeconds} IS NOT NULL
+                        AND ${table.postOpenExpiresAt} IS NOT NULL)
+                        ))
+                )`,
         ),
     ],
 );

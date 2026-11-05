@@ -1,14 +1,32 @@
+
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { readEncryptedFile } from "./file-storage.service.js";
-import { decryptFileContent } from "../../infrastructure/encryption/encryption.service.js";
+import { decryptFileContent, encryptFileContent } from "../../infrastructure/encryption/encryption.service.js";
 import { db } from "../../db/client.js";
 import { files } from "../../db/schema/files.js";
 import { vaults } from "../../db/schema/vaults.js";
-import {cleanupJobs} from "../../db/schema/cleanup-jobs.js";
-import { encryptFileContent } from "../../infrastructure/encryption/encryption.service.js";
-import { storeEncryptedFile, deleteStoredFile } from "./file-storage.service.js";
+import { cleanupJobs } from "../../db/schema/cleanup-jobs.js";
+import {
+    storeEncryptedFile,
+    deleteStoredFile,
+} from "./file-storage.service.js";
 import { AppError } from "../../shared/app-error.js";
+
+function canOwnerAccessVault(vault: {
+    status: string;
+    expiryPolicy: string;
+    expiresAt: Date | null;
+}): boolean {
+    if (vault.expiryPolicy === "REVOKE_ACCESS") {
+        return ["ACTIVE", "EXPIRED", "REVOKED"].includes(vault.status);
+    }
+
+    return (
+        vault.status === "ACTIVE" &&
+        (!vault.expiresAt || vault.expiresAt > new Date())
+    );
+}
 
 interface UploadFileInput {
     vaultId: string;
@@ -44,12 +62,15 @@ export async function uploadFileService(input: UploadFileInput) {
                     encryptedDek: vaults.encryptedDek,
                     status: vaults.status,
                     expiresAt: vaults.expiresAt,
+                    expiryPolicy: vaults.expiryPolicy,
                 })
                 .from(vaults)
-                .where(and(
-                    eq(vaults.id, input.vaultId),
-                    eq(vaults.ownerId, input.ownerId),
-                ))
+                .where(
+                    and(
+                        eq(vaults.id, input.vaultId),
+                        eq(vaults.ownerId, input.ownerId),
+                    ),
+                )
                 .for("update")
                 .limit(1);
 
@@ -57,11 +78,12 @@ export async function uploadFileService(input: UploadFileInput) {
                 throw new AppError(404, "VAULT_NOT_FOUND", "Vault not found.");
             }
 
-            if (
-                vault.status !== "ACTIVE" ||
-                (vault.expiresAt && vault.expiresAt <= new Date())
-            ) {
-                throw new AppError(410, "VAULT_UNAVAILABLE", "Vault is not active.");
+            if (!canOwnerAccessVault(vault)) {
+                throw new AppError(
+                    410,
+                    "VAULT_UNAVAILABLE",
+                    "Vault is not available.",
+                );
             }
 
             const encrypted = encryptFileContent(
@@ -122,26 +144,30 @@ export async function downloadFileService(input: {
                 encryptedDek: vaults.encryptedDek,
                 status: vaults.status,
                 expiresAt: vaults.expiresAt,
+                expiryPolicy: vaults.expiryPolicy,
             },
         })
         .from(files)
         .innerJoin(vaults, eq(files.vaultId, vaults.id))
-        .where(and(
-            eq(files.id, input.fileId),
-            eq(files.vaultId, input.vaultId),
-            eq(vaults.ownerId, input.ownerId),
-        ))
+        .where(
+            and(
+                eq(files.id, input.fileId),
+                eq(files.vaultId, input.vaultId),
+                eq(vaults.ownerId, input.ownerId),
+            ),
+        )
         .limit(1);
 
     if (!result || result.file.status !== "ACTIVE") {
         throw new AppError(404, "FILE_NOT_FOUND", "File not found.");
     }
 
-    if (
-        result.vault.status !== "ACTIVE" ||
-        (result.vault.expiresAt && result.vault.expiresAt <= new Date())
-    ) {
-        throw new AppError(410, "VAULT_UNAVAILABLE", "Vault is not active.");
+    if (!canOwnerAccessVault(result.vault)) {
+        throw new AppError(
+            410,
+            "VAULT_UNAVAILABLE",
+            "Vault is not available.",
+        );
     }
 
     const encryptedContent = await readEncryptedFile(
@@ -180,23 +206,27 @@ export async function listVaultFilesService(input: {
             id: vaults.id,
             status: vaults.status,
             expiresAt: vaults.expiresAt,
+            expiryPolicy: vaults.expiryPolicy,
         })
         .from(vaults)
-        .where(and(
-            eq(vaults.id, input.vaultId),
-            eq(vaults.ownerId, input.ownerId),
-        ))
+        .where(
+            and(
+                eq(vaults.id, input.vaultId),
+                eq(vaults.ownerId, input.ownerId),
+            ),
+        )
         .limit(1);
 
     if (!vault) {
         throw new AppError(404, "VAULT_NOT_FOUND", "Vault not found.");
     }
 
-    if (
-        vault.status !== "ACTIVE" ||
-        (vault.expiresAt && vault.expiresAt <= new Date())
-    ) {
-        throw new AppError(410, "VAULT_UNAVAILABLE", "Vault is not active.");
+    if (!canOwnerAccessVault(vault)) {
+        throw new AppError(
+            410,
+            "VAULT_UNAVAILABLE",
+            "Vault is not available.",
+        );
     }
 
     return db
@@ -208,10 +238,12 @@ export async function listVaultFilesService(input: {
             createdAt: files.createdAt,
         })
         .from(files)
-        .where(and(
-            eq(files.vaultId, input.vaultId),
-            eq(files.status, "ACTIVE"),
-        ))
+        .where(
+            and(
+                eq(files.vaultId, input.vaultId),
+                eq(files.status, "ACTIVE"),
+            ),
+        )
         .orderBy(files.createdAt)
         .limit(input.limit)
         .offset(input.offset);
@@ -223,17 +255,47 @@ export async function deleteFileService(input: {
     ownerId: string;
 }): Promise<void> {
     await db.transaction(async (tx) => {
+        // Lock the owner-scoped vault first.
+        const [vault] = await tx
+            .select({
+                id: vaults.id,
+                status: vaults.status,
+                expiryPolicy: vaults.expiryPolicy,
+                expiresAt: vaults.expiresAt,
+            })
+            .from(vaults)
+            .where(
+                and(
+                    eq(vaults.id, input.vaultId),
+                    eq(vaults.ownerId, input.ownerId),
+                ),
+            )
+            .for("update")
+            .limit(1);
+
+        if (!vault) {
+            throw new AppError(404, "VAULT_NOT_FOUND", "Vault not found.");
+        }
+
+        if (!canOwnerAccessVault(vault)) {
+            throw new AppError(
+                410,
+                "VAULT_UNAVAILABLE",
+                "Vault is not available.",
+            );
+        }
+
+        // Then lock the file within that vault.
         const [file] = await tx
-            .select({ id: files.id })
+            .select({
+                id: files.id,
+            })
             .from(files)
-            .innerJoin(vaults, eq(files.vaultId, vaults.id))
             .where(
                 and(
                     eq(files.id, input.fileId),
-                    eq(files.vaultId, input.vaultId),
-                    eq(vaults.ownerId, input.ownerId),
+                    eq(files.vaultId, vault.id),
                     eq(files.status, "ACTIVE"),
-                    eq(vaults.status, "ACTIVE"),
                 ),
             )
             .for("update")

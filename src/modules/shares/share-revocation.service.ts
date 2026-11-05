@@ -72,7 +72,13 @@ export async function revokeShareService(
                 revokedAt: new Date(),
                 updatedAt: new Date(),
             })
-            .where(eq(shares.id, shareId))
+            .where(
+                and(
+                    eq(shares.id, shareId),
+                    eq(shares.vaultId, vaultId),
+                    eq(shares.status, "active"),
+                ),
+            )
             .returning({
                 id: shares.id,
                 status: shares.status,

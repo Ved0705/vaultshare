@@ -1,16 +1,15 @@
-import argon2 from "argon2";
+
 import { randomUUID } from "node:crypto";
-import { and, count, eq, gte } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import { shares } from "../../db/schema/shares.js";
-import { shareCredentials } from "../../db/schema/share-credentials.js";
-import { passphraseAttempts } from "../../db/schema/passphrase-attempts.js";
 import { vaults } from "../../db/schema/vaults.js";
 import { writeRequests } from "../../db/schema/write-requests.js";
 
 import { encryptVaultContent } from "../../infrastructure/encryption/encryption.service.js";
 import { AppError } from "../../shared/app-error.js";
+import { verifySharePassphrase } from "./passphrase-verification.service.js";
 
 interface CreateWriteRequestInput {
     shareCode: string;
@@ -19,23 +18,61 @@ interface CreateWriteRequestInput {
     passphrase: string;
 }
 
-const MAX_FAILED_ATTEMPTS = 5;
-const ATTEMPT_WINDOW_MINUTES = 15;
-
 export async function createWriteRequestService(
     input: CreateWriteRequestInput,
 ) {
     const result = await db.transaction(async (tx) => {
         const now = new Date();
 
-        // Find and lock the reader's share.
-        const [share] = await tx
-            .select()
+        // Read the share without locking to discover its vault ID.
+        const [initialShare] = await tx
+            .select({
+                id: shares.id,
+                vaultId: shares.vaultId,
+            })
             .from(shares)
             .where(
                 and(
                     eq(shares.shareCode, input.shareCode),
                     eq(shares.readerId, input.readerId),
+                ),
+            )
+            .limit(1);
+
+        if (!initialShare) {
+            throw new AppError(
+                404,
+                "SHARE_NOT_FOUND",
+                "Share not found.",
+            );
+        }
+
+        // Lock the vault first to maintain consistent lock ordering.
+        const [vault] = await tx
+            .select()
+            .from(vaults)
+            .where(eq(vaults.id, initialShare.vaultId))
+            .for("update")
+            .limit(1);
+
+        if (!vault || vault.status !== "ACTIVE") {
+            throw new AppError(
+                410,
+                "VAULT_UNAVAILABLE",
+                "The original vault is no longer active.",
+            );
+        }
+
+        // Lock and re-fetch the share after acquiring the vault lock.
+        const [share] = await tx
+            .select()
+            .from(shares)
+            .where(
+                and(
+                    eq(shares.id, initialShare.id),
+                    eq(shares.shareCode, input.shareCode),
+                    eq(shares.readerId, input.readerId),
+                    eq(shares.vaultId, vault.id),
                 ),
             )
             .for("update")
@@ -85,22 +122,6 @@ export async function createWriteRequestService(
             );
         }
 
-        // Lock and validate the original vault.
-        const [vault] = await tx
-            .select()
-            .from(vaults)
-            .where(eq(vaults.id, share.vaultId))
-            .for("update")
-            .limit(1);
-
-        if (!vault || vault.status !== "ACTIVE") {
-            throw new AppError(
-                410,
-                "VAULT_UNAVAILABLE",
-                "The original vault is no longer active.",
-            );
-        }
-
         if (vault.expiresAt && vault.expiresAt <= now) {
             throw new AppError(
                 410,
@@ -109,66 +130,18 @@ export async function createWriteRequestService(
             );
         }
 
-        // Rate-limit failed passphrase attempts.
-        const windowStart = new Date(
-            now.getTime() - ATTEMPT_WINDOW_MINUTES * 60 * 1000,
-        );
+        // Verify passphrase and record the attempt.
+        const validPassphrase = await verifySharePassphrase({
+            tx,
+            shareId: share.id,
+            readerId: input.readerId,
+            passphrase: input.passphrase,
+        });
 
-        const [attemptStats] = await tx
-            .select({ total: count() })
-            .from(passphraseAttempts)
-            .where(
-                and(
-                    eq(passphraseAttempts.shareId, share.id),
-                    eq(passphraseAttempts.userId, input.readerId),
-                    eq(passphraseAttempts.succeeded, false),
-                    gte(passphraseAttempts.attemptedAt, windowStart),
-                ),
-            );
-
-        if ((attemptStats?.total ?? 0) >= MAX_FAILED_ATTEMPTS) {
-            throw new AppError(
-                429,
-                "TOO_MANY_ATTEMPTS",
-                "Too many incorrect passphrase attempts. Try again later.",
-            );
-        }
-
-        // Verify the share passphrase.
-        const [credential] = await tx
-            .select()
-            .from(shareCredentials)
-            .where(eq(shareCredentials.shareId, share.id))
-            .limit(1);
-
-        if (!credential) {
-            throw new AppError(
-                500,
-                "SHARE_CREDENTIAL_MISSING",
-                "Share credentials could not be verified.",
-            );
-        }
-
-        const validPassphrase = await argon2.verify(
-            credential.passphraseHash,
-            input.passphrase,
-        );
-
+        // Return instead of throwing so the failed attempt is committed.
         if (!validPassphrase) {
-            await tx.insert(passphraseAttempts).values({
-                shareId: share.id,
-                userId: input.readerId,
-                succeeded: false,
-            });
-
             return { kind: "invalid-passphrase" as const };
         }
-
-        await tx.insert(passphraseAttempts).values({
-            shareId: share.id,
-            userId: input.readerId,
-            succeeded: true,
-        });
 
         // Generate an independent encryption context for the proposal.
         const requestId = randomUUID();

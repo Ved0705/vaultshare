@@ -92,6 +92,13 @@
       "when": 1793891028219,
       "tag": "0012_magenta_paibok",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793896554047,
+      "tag": "0013_fix_share_post_open_expiry_constraint",
+      "breakpoints": true
     }
   ]
 }

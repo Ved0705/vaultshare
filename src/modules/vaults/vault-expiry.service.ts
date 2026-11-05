@@ -1,4 +1,6 @@
+
 import { and, eq, lte, isNotNull } from "drizzle-orm";
+
 import { db } from "../../db/client.js";
 import { vaults } from "../../db/schema/vaults.js";
 import { shares } from "../../db/schema/shares.js";
@@ -6,6 +8,8 @@ import { cleanupJobs } from "../../db/schema/cleanup-jobs.js";
 
 export async function processExpiredVaults(): Promise<number> {
     return db.transaction(async (tx) => {
+        const now = new Date();
+
         const expiredVaults = await tx
             .select({
                 id: vaults.id,
@@ -16,7 +20,7 @@ export async function processExpiredVaults(): Promise<number> {
                 and(
                     eq(vaults.status, "ACTIVE"),
                     isNotNull(vaults.expiresAt),
-                    lte(vaults.expiresAt, new Date()),
+                    lte(vaults.expiresAt, now),
                 ),
             )
             .for("update", { skipLocked: true })
@@ -30,31 +34,43 @@ export async function processExpiredVaults(): Promise<number> {
                         status: "DESTROYED",
                         encryptedContent: "",
                         encryptedDek: "",
-                        updatedAt: new Date(),
+                        encryptionNonce: "",
+                        encryptionTag: "",
+                        updatedAt: now,
                     })
                     .where(eq(vaults.id, vault.id));
 
-                await tx.insert(cleanupJobs).values({
-                    resourceType: "VAULT",
-                    resourceId: vault.id,
-                }).onConflictDoNothing();
+                await tx
+                    .insert(cleanupJobs)
+                    .values({
+                        resourceType: "VAULT",
+                        resourceId: vault.id,
+                    })
+                    .onConflictDoNothing();
             } else {
+                // Preserve owner access while invalidating readers.
                 await tx
                     .update(vaults)
                     .set({
-                        status: "REVOKED",
-                        updatedAt: new Date(),
+                        status: "EXPIRED",
+                        updatedAt: now,
                     })
                     .where(eq(vaults.id, vault.id));
             }
 
+            // Invalidate all active reader shares.
             await tx
                 .update(shares)
                 .set({
                     status: "expired",
-                    updatedAt: new Date(),
+                    updatedAt: now,
                 })
-                .where(eq(shares.vaultId, vault.id));
+                .where(
+                    and(
+                        eq(shares.vaultId, vault.id),
+                        eq(shares.status, "active"),
+                    ),
+                );
         }
 
         return expiredVaults.length;

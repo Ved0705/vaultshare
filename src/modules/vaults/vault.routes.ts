@@ -11,6 +11,8 @@ import {
     getVaultController,
     updateVaultController,
 } from "./vault.controller.js";
+import {deleteVaultController} from "./vault.controller.js";
+
 import { listWriteRequestsController } from "../shares/write-request-list.controller.js";
 import { getWriteRequestDetailController } from "../shares/write-request-detail.controller.js";
 import fileRoutes from "../files/file.routes.js";
@@ -25,6 +27,7 @@ router.post("/", createVaultController);
 router.get("/", listVaultsController);
 router.get("/:id", getVaultController);
 router.patch("/:id", updateVaultController);
+router.delete("/:id", deleteVaultController);
 router.use("/:id/shares", shareRevocationRoutes);
 router.post(
     "/:id/write-requests/:requestId/review",

@@ -1,15 +1,14 @@
 
-import argon2 from "argon2";
-import { and, count, eq, gte, sql } from "drizzle-orm";
-
 import { db } from "../../db/client.js";
+import { and, eq, sql } from "drizzle-orm";
+
 import { shares } from "../../db/schema/shares.js";
-import { shareCredentials } from "../../db/schema/share-credentials.js";
-import { passphraseAttempts } from "../../db/schema/passphrase-attempts.js";
 import { vaults } from "../../db/schema/vaults.js";
 
 import { AppError } from "../../shared/app-error.js";
+
 import { decryptVaultContent } from "../../infrastructure/encryption/encryption.service.js";
+import { verifySharePassphrase } from "./passphrase-verification.service.js";
 
 interface OpenShareInput {
     shareCode: string;
@@ -17,21 +16,55 @@ interface OpenShareInput {
     passphrase: string;
 }
 
-const MAX_FAILED_ATTEMPTS = 5;
-const ATTEMPT_WINDOW_MINUTES = 15;
-
 export async function openShareService(input: OpenShareInput) {
     const result = await db.transaction(async (tx) => {
         const now = new Date();
 
-        // Find and lock the reader's share.
-        const [share] = await tx
-            .select()
+        // Read the share without locking to discover its vault ID.
+        const [initialShare] = await tx
+            .select({
+                id: shares.id,
+                vaultId: shares.vaultId,
+            })
             .from(shares)
             .where(
                 and(
                     eq(shares.shareCode, input.shareCode),
                     eq(shares.readerId, input.readerId),
+                ),
+            )
+            .limit(1);
+
+        if (!initialShare) {
+            throw new AppError(404, "SHARE_NOT_FOUND", "Share not found");
+        }
+
+        // Always lock the vault before locking its share.
+        const [vault] = await tx
+            .select()
+            .from(vaults)
+            .where(eq(vaults.id, initialShare.vaultId))
+            .for("update")
+            .limit(1);
+
+        if (!vault || vault.status !== "ACTIVE") {
+            throw new AppError(
+                410,
+                "VAULT_UNAVAILABLE",
+                "This vault is no longer available",
+            );
+        }
+
+        // Re-fetch and lock the share after acquiring the vault lock.
+        const [share] = await tx
+            .select()
+            .from(shares)
+            .where(
+                and(
+                    eq(shares.id, initialShare.id),
+                    eq(shares.shareCode, input.shareCode),
+                    eq(shares.readerId, input.readerId),
+                    eq(shares.vaultId, vault.id),
                 ),
             )
             .for("update")
@@ -42,84 +75,51 @@ export async function openShareService(input: OpenShareInput) {
         }
 
         if (share.status !== "active") {
-            throw new AppError(410, "SHARE_UNAVAILABLE", "This share is no longer available");
-        }
-
-        const [vault] = await tx
-            .select()
-            .from(vaults)
-            .where(eq(vaults.id, share.vaultId))
-            .for("update")
-            .limit(1);
-
-        if (!vault || vault.status !== "ACTIVE") {
-            throw new AppError(410, "VAULT_UNAVAILABLE", "This vault is no longer available");
+            throw new AppError(
+                410,
+                "SHARE_UNAVAILABLE",
+                "This share is no longer available",
+            );
         }
 
         // Overall vault expiry always takes priority.
         if (vault.expiresAt && vault.expiresAt <= now) {
-            throw new AppError(410, "VAULT_EXPIRED", "This vault has expired");
+            throw new AppError(
+                410,
+                "VAULT_EXPIRED",
+                "This vault has expired",
+            );
         }
 
         if (
             share.postOpenExpiresAt &&
             share.postOpenExpiresAt <= now
         ) {
-            throw new AppError(410, "SHARE_EXPIRED", "This share has expired");
+            throw new AppError(
+                410,
+                "SHARE_EXPIRED",
+                "This share has expired",
+            );
         }
 
         if (share.successfulOpenCount >= share.maxAccessCount) {
-            throw new AppError(410, "ACCESS_LIMIT_REACHED", "The access limit has been reached");
-        }
-
-        // Check failed passphrase attempts in the rolling time window.
-        const windowStart = new Date(
-            now.getTime() - ATTEMPT_WINDOW_MINUTES * 60 * 1000,
-        );
-
-        const [attemptStats] = await tx
-            .select({ total: count() })
-            .from(passphraseAttempts)
-            .where(
-                and(
-                    eq(passphraseAttempts.shareId, share.id),
-                    eq(passphraseAttempts.userId, input.readerId),
-                    eq(passphraseAttempts.succeeded, false),
-                    gte(passphraseAttempts.attemptedAt, windowStart),
-                ),
-            );
-
-        if ((attemptStats?.total ?? 0) >= MAX_FAILED_ATTEMPTS) {
             throw new AppError(
-                429,
-                "TOO_MANY_PASSPHRASE_ATTEMPTS",
-                "Too many incorrect passphrase attempts. Try again later.",
+                410,
+                "ACCESS_LIMIT_REACHED",
+                "The access limit has been reached",
             );
         }
 
-        const [credential] = await tx
-            .select()
-            .from(shareCredentials)
-            .where(eq(shareCredentials.shareId, share.id))
-            .limit(1);
+        // Verify passphrase and record the attempt.
+        const isValid = await verifySharePassphrase({
+            tx,
+            shareId: share.id,
+            readerId: input.readerId,
+            passphrase: input.passphrase,
+        });
 
-        if (!credential) {
-            throw new AppError(500, "SHARE_CREDENTIAL_MISSING", "Share credentials are unavailable");
-        }
-
-        const isValid = await argon2.verify(
-            credential.passphraseHash,
-            input.passphrase,
-        );
-
+        // Return instead of throwing so the failed attempt is committed.
         if (!isValid) {
-            // Return instead of throwing so this failed attempt is committed.
-            await tx.insert(passphraseAttempts).values({
-                shareId: share.id,
-                userId: input.readerId,
-                succeeded: false,
-            });
-
             return { kind: "invalid-passphrase" as const };
         }
 
@@ -143,12 +143,6 @@ export async function openShareService(input: OpenShareInput) {
             })
             .where(eq(shares.id, share.id));
 
-        await tx.insert(passphraseAttempts).values({
-            shareId: share.id,
-            userId: input.readerId,
-            succeeded: true,
-        });
-
         const canRead = share.permissions.includes("READ");
         const canWrite = share.permissions.includes("WRITE");
 
@@ -169,7 +163,8 @@ export async function openShareService(input: OpenShareInput) {
                 shareCode: share.shareCode,
                 permissions: share.permissions,
                 successfulOpenCount: share.successfulOpenCount + 1,
-                remainingAccesses: share.maxAccessCount - share.successfulOpenCount - 1,
+                remainingAccesses:
+                    share.maxAccessCount - share.successfulOpenCount - 1,
                 content,
                 canRequestWrite: canWrite,
                 postOpenExpiresAt,

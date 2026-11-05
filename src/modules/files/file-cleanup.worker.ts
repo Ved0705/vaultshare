@@ -16,6 +16,14 @@ function isMissingFile(error: unknown): boolean {
     );
 }
 
+function getSafeErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message.slice(0, 1000);
+    }
+
+    return "Unknown cleanup error.";
+}
+
 async function deleteFileBlob(storageKey: string): Promise<void> {
     try {
         await deleteStoredFile(storageKey);
@@ -139,9 +147,15 @@ export async function processOneCleanupJob(): Promise<boolean> {
                 lastError: null,
                 updatedAt: new Date(),
             })
-            .where(eq(cleanupJobs.id, job.id));
+            .where(
+                and(
+                    eq(cleanupJobs.id, job.id),
+                    eq(cleanupJobs.status, "PROCESSING"),
+                    eq(cleanupJobs.lockedAt, job.lockedAt!),
+                ),
+            );
 
-    } catch {
+    } catch (error) {
         const failedPermanently = job.attempts >= job.maxAttempts;
 
         const retryDelayMs = Math.min(
@@ -155,10 +169,16 @@ export async function processOneCleanupJob(): Promise<boolean> {
                 status: failedPermanently ? "FAILED" : "PENDING",
                 lockedAt: null,
                 runAfter: new Date(Date.now() + retryDelayMs),
-                lastError: "Cleanup operation failed.",
+                lastError: getSafeErrorMessage(error),
                 updatedAt: new Date(),
             })
-            .where(eq(cleanupJobs.id, job.id));
+            .where(
+                and(
+                    eq(cleanupJobs.id, job.id),
+                    eq(cleanupJobs.status, "PROCESSING"),
+                    eq(cleanupJobs.lockedAt, job.lockedAt!),
+                ),
+            );
     }
 
     return true;

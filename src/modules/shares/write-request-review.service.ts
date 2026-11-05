@@ -1,10 +1,11 @@
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 import { db } from "../../db/client.js";
 import { writeRequests } from "../../db/schema/write-requests.js";
 import { vaults } from "../../db/schema/vaults.js";
+import { shares } from "../../db/schema/shares.js";
 import { vaultLineage } from "../../db/schema/vault-lineage.js";
 
 import {
@@ -13,13 +14,13 @@ import {
 } from "../../infrastructure/encryption/encryption.service.js";
 
 import { AppError } from "../../shared/app-error.js";
+
 interface ReviewWriteRequestInput {
     requestId: string;
     vaultId: string;
     ownerId: string;
     decision: "APPROVE" | "REJECT";
 }
-
 
 export async function reviewWriteRequestService(
     input: ReviewWriteRequestInput,
@@ -42,11 +43,12 @@ export async function reviewWriteRequestService(
         if (request.status !== "PENDING") {
             throw new AppError(409, "REQUEST_ALREADY_REVIEWED", "This request has already been reviewed.");
         }
+
         if (request.sourceVaultId !== input.vaultId) {
             throw new AppError(404, "REQUEST_NOT_FOUND", "Write request not found.");
         }
 
-        // Lock the original vault.
+        // Lock the original vault before locking the share.
         const [sourceVault] = await tx
             .select()
             .from(vaults)
@@ -58,11 +60,14 @@ export async function reviewWriteRequestService(
             throw new AppError(404, "VAULT_NOT_FOUND", "Vault not found.");
         }
 
-        if (sourceVault.status !== "ACTIVE" ||
-            (sourceVault.expiresAt && sourceVault.expiresAt <= now)) {
+        if (
+            sourceVault.status !== "ACTIVE" ||
+            (sourceVault.expiresAt && sourceVault.expiresAt <= now)
+        ) {
             throw new AppError(410, "VAULT_UNAVAILABLE", "The original vault is no longer active.");
         }
 
+        // Rejection remains possible even if the originating share was revoked.
         if (input.decision === "REJECT") {
             const [updated] = await tx
                 .update(writeRequests)
@@ -79,6 +84,48 @@ export async function reviewWriteRequestService(
                 });
 
             return updated;
+        }
+
+        // Approval requires the originating share to remain valid.
+        // Lock order: request -> vault -> share.
+        const [share] = await tx
+            .select()
+            .from(shares)
+            .where(
+                and(
+                    eq(shares.id, request.shareId),
+                    eq(shares.vaultId, sourceVault.id),
+                    eq(shares.readerId, request.requestedBy),
+                ),
+            )
+            .for("update")
+            .limit(1);
+
+        if (!share || share.status !== "active") {
+            throw new AppError(
+                409,
+                "SHARE_UNAVAILABLE",
+                "The originating share is no longer active.",
+            );
+        }
+
+        if (!share.permissions.includes("WRITE")) {
+            throw new AppError(
+                403,
+                "WRITE_PERMISSION_REQUIRED",
+                "The originating share does not grant WRITE permission.",
+            );
+        }
+
+        if (
+            share.postOpenExpiresAt &&
+            share.postOpenExpiresAt <= now
+        ) {
+            throw new AppError(
+                410,
+                "SHARE_EXPIRED",
+                "The originating share has expired.",
+            );
         }
 
         // Decrypt the proposed content using the request ID as its encryption context.
