@@ -26,6 +26,7 @@ interface CreateVaultInput {
     description?: string;
     content: string;
     overallTtlSeconds: number;
+    expiryPolicy?: "DESTROY" | "REVOKE_ACCESS";
     folderId?: string | null;
 }
 
@@ -68,7 +69,7 @@ export async function createVaultService(
         encryptionTag: encrypted.encryptionTag,
         overallTtlSeconds: input.overallTtlSeconds,
         status: "ACTIVE",
-        expiryPolicy: "DESTROY",
+        expiryPolicy: input.expiryPolicy ?? "DESTROY",
     });
 }
 

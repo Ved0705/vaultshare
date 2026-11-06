@@ -1,6 +1,8 @@
 import http from "node:http";
 import crypto from "node:crypto";
 const TEST_MODE = process.argv[2] ?? "owner";
+const EXPIRY_DESTROY_VAULT_ID = process.env.EXPIRY_DESTROY_VAULT_ID;
+const EXPIRY_REVOKE_VAULT_ID = process.env.EXPIRY_REVOKE_VAULT_ID;
 const TEST_SHARE_CODE = process.env.TEST_SHARE_CODE;
 const TEST_PASSPHRASE =
     process.env.TEST_PASSPHRASE ?? "VaultShare-Integration-Test-2026!";
@@ -672,6 +674,7 @@ async function runReaderFileTests(accessToken) {
 // COGNITO CALLBACK SERVER
 // --------------------------------------------------
 
+
 const server = http.createServer(async (req, res) => {
     try {
         const callback = new URL(req.url, CALLBACK_URL);
@@ -739,21 +742,106 @@ const server = http.createServer(async (req, res) => {
 
         const ownerId = authResult.data.data.id;
 
-        if (TEST_MODE === "owner") {
+        // Verify the expected account
+        if (
+            TEST_MODE === "owner" ||
+            TEST_MODE === "auth" ||
+            TEST_MODE === "expiry" ||
+            TEST_MODE === "expiry-verify"
+        ) {
             assert(
                 ownerId === OWNER_USER_ID,
-                "Sign in using the owner Cognito account."
+                "Authenticated user is not the configured owner",
             );
-        }
-
-        if (TEST_MODE === "reader") {
+        } else if (TEST_MODE === "reader") {
             assert(
                 ownerId === READER_USER_ID,
-                "Sign in using the reader Cognito account."
+                "Sign in using the reader Cognito account.",
+            );
+        } else {
+            throw new Error(
+                "Invalid test mode. Use auth, owner, reader, expiry, or expiry-verify.",
             );
         }
 
-        if (TEST_MODE === "owner") {
+        // Verify email status for every mode
+        assert(
+            authResult.data.data.emailVerified === true,
+            "User email is not verified.",
+        );
+
+        console.log("User authentication and provisioning: PASS");
+        console.log("User ID:", ownerId);
+        console.log("Email verified:", authResult.data.data.emailVerified);
+
+        // Authentication-only mode: no vault/share/file operations
+        if (TEST_MODE === "auth") {
+            console.log("\n========================================");
+            console.log("AUTHENTICATION-ONLY TEST: PASSED");
+            console.log("========================================");
+            console.log("Cognito OAuth authentication: SUCCESS");
+            console.log("VaultShare /auth/me: SUCCESS");
+            console.log("Owner database ID: VERIFIED");
+            console.log("Email verification: VERIFIED");
+            console.log("No vaults, shares, or files were created.");
+
+            res.writeHead(200, { "Content-Type": "text/plain" });
+            res.end("VaultShare authentication test passed. Check terminal.");
+        }
+        else if (TEST_MODE === "expiry-verify") {
+            console.log("\n=== Owner Access After Expiry Tests ===");
+
+            const destroyResult = await apiRequest(
+                `/vaults/${EXPIRY_DESTROY_VAULT_ID}`,
+                tokens.access_token,
+            );
+
+            console.log("\nDESTROY vault response:");
+            console.log("HTTP status:", destroyResult.status);
+            console.log(JSON.stringify(destroyResult.data, null, 2));
+
+            const revokeResult = await apiRequest(
+                `/vaults/${EXPIRY_REVOKE_VAULT_ID}`,
+                tokens.access_token,
+            );
+            res.writeHead(200, { "Content-Type": "text/plain" });
+            res.end("Owner access after expiry verification passed.");
+
+            console.log("\nREVOKE_ACCESS vault response:");
+            console.log("HTTP status:", revokeResult.status);
+            console.log(JSON.stringify(revokeResult.data, null, 2));
+
+            assert(
+                destroyResult.status === 410,
+                "DESTROY vault should return HTTP 410 to its owner",
+            );
+
+            assert(
+                revokeResult.status === 200,
+                "REVOKE_ACCESS vault should remain accessible to its owner",
+            );
+
+            console.log("\nOWNER ACCESS AFTER EXPIRY: PASSED");
+        }
+        else if (TEST_MODE === "expiry") {
+            const expiryVaults = await createExpiryTestVaults(
+                tokens.access_token,
+            );
+
+            console.log("\nExpiry test vaults created:");
+            console.log("DESTROY:", expiryVaults.destroyVaultId);
+            console.log("REVOKE_ACCESS:", expiryVaults.revokeVaultId);
+
+            console.log("\n========================================");
+            console.log("EXPIRY TEST SETUP: PASSED");
+            console.log("========================================");
+
+            res.writeHead(200, { "Content-Type": "text/plain" });
+            res.end("VaultShare expiry test setup passed. Check terminal.");
+        }
+
+        // Full owner integration tests
+        else if (TEST_MODE === "owner") {
             const vaultId = await runVaultTests(tokens.access_token);
 
             const share = await runShareTests(
@@ -767,35 +855,29 @@ const server = http.createServer(async (req, res) => {
                 vaultId,
             );
 
-            const expiryVaults = await createExpiryTestVaults(tokens.access_token);
+            const expiryVaults = await createExpiryTestVaults(
+                tokens.access_token,
+            );
 
             console.log("Expiry test vaults:", expiryVaults);
             console.log("\nOWNER TEST COMPLETE");
             console.log("Share Code:", share.shareCode);
             console.log("File ID:", fileId);
 
-        } else if (TEST_MODE === "reader") {
+            res.writeHead(200, { "Content-Type": "text/plain" });
+            res.end("All VaultShare integration tests passed. Check terminal.");
+        }
+
+        // Full reader integration tests
+        else if (TEST_MODE === "reader") {
             await runShareAccessTests(tokens.access_token);
             await runReaderFileTests(tokens.access_token);
 
-        } else {
-            throw new Error("Invalid test mode. Use owner or reader.");
+            console.log("\nREADER TEST COMPLETE");
+
+            res.writeHead(200, { "Content-Type": "text/plain" });
+            res.end("All VaultShare reader tests passed. Check terminal.");
         }
-        console.log("User authentication and provisioning: PASS");
-        console.log("User ID:", ownerId);
-        console.log("Email verified:", authResult.data.data.emailVerified);
-
-        // Ensure the owner account is being used
-
-        assert(
-            authResult.data.data.emailVerified === true,
-            "Owner email is not verified",
-        );
-
-
-
-        res.writeHead(200, { "Content-Type": "text/plain" });
-        res.end("All VaultShare integration tests passed. Check terminal.");
 
         server.close();
     } catch (error) {
@@ -814,6 +896,8 @@ server.listen(5174, "127.0.0.1", () => {
     console.log(authorizeUrl.toString());
 });
 
+
+
 async function createExpiryTestVaults(accessToken) {
     console.log("\n=== Vault Expiry Tests ===");
 
@@ -829,6 +913,7 @@ async function createExpiryTestVaults(accessToken) {
                 name: "Expiry Test - DESTROY",
                 content: "Temporary secret for destruction test",
                 overallTtlSeconds: 60,
+                expiryPolicy: "DESTROY",
             }),
         }
     );
@@ -850,6 +935,7 @@ async function createExpiryTestVaults(accessToken) {
                 name: "Expiry Test - REVOKE",
                 content: "Retained secret for revocation test",
                 overallTtlSeconds: 60,
+                expiryPolicy: "REVOKE_ACCESS",
             }),
         }
     );

@@ -58,6 +58,7 @@ export async function createVaultController(
             name: parsed.data.name,
             content: parsed.data.content,
             overallTtlSeconds: parsed.data.overallTtlSeconds,
+            expiryPolicy: parsed.data.expiryPolicy,
             ...(parsed.data.description !== undefined
                 ? { description: parsed.data.description }
                 : {}),

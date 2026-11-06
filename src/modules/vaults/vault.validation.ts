@@ -1,3 +1,4 @@
+
 import { z } from "zod";
 
 export const createVaultSchema = z.object({
@@ -11,6 +12,9 @@ export const createVaultSchema = z.object({
         .int()
         .positive()
         .max(2_147_483_647),
+
+    expiryPolicy: z.enum(["DESTROY", "REVOKE_ACCESS"])
+        .default("DESTROY"),
 
     folderId: z.string().uuid().nullable().optional(),
 }).strict();
