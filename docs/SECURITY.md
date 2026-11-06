@@ -1,257 +1,273 @@
-# VaultShare — System Architecture
+# VaultShare — Security Architecture and Controls
 
-## 1. Overview
+## 1. Purpose and Scope
 
-VaultShare uses a modular layered-monolith architecture built with Node.js, TypeScript, Express 5, and PostgreSQL.
+This document describes the security design and implemented controls in VaultShare.
 
-The application is organized into business modules, infrastructure services, middleware, authorization, and database access.
+VaultShare is a temporary secure file and secret-sharing application built as a modular layered monolith using Node.js, TypeScript, Express 5, and PostgreSQL.
 
-The architecture keeps business logic separate from infrastructure concerns while allowing the application to run as a single backend service.
+The security model focuses on:
+- Authenticated access and per-vault authorization.
+- Encryption of vault content and uploaded files.
+- Secure handling of share passphrases.
+- Expiration, revocation, and permanent destruction.
+- Isolation between readers and vaults.
+- Safe handling of concurrent lifecycle and write operations.
+- Deferred cleanup of encrypted storage.
 
-## 2. Technology Stack
+This document distinguishes implemented controls from operational requirements that still need verification. It does not represent a production security certification.
 
-| Layer | Technology |
+## 2. Security Objectives
+
+VaultShare aims to provide:
+
+| Objective | Security expectation |
 |---|---|
-| Runtime | Node.js |
-| Language | TypeScript |
-| HTTP framework | Express 5 |
-| Database | PostgreSQL 17 |
-| ORM | Drizzle ORM |
-| Validation | Zod |
-| Authentication | AWS Cognito |
-| Encryption | AES-256-GCM |
-| Key derivation / passphrase hashing | Argon2id |
-| Logging | Pino |
-| File uploads | Multer |
-| Email | Nodemailer |
-| Local infrastructure | Docker Compose |
+| Confidentiality | Vault content and stored file content remain encrypted. |
+| Authorization | Users can access only resources permitted by authentication and vault-level permissions. |
+| Integrity | Authenticated encryption detects unauthorized ciphertext modification. |
+| Isolation | Revoking one reader's share does not revoke unrelated readers or destroy the source vault. |
+| Expiration | Expired access cannot be used to continue accessing a vault. |
+| Destruction | Destroyed vaults have their encrypted payload and key material cleared from the database. |
+| Accountability | Lifecycle and access-related operations should be traceable without exposing secrets. |
 
-## 3. High-Level Architecture
+## 3. Authentication and Authorization
 
-```text
-                  Client
-                    |
-                    v
-             Express Application
-                    |
-          Middleware and Routing
-                    |
-        +-----------+-----------+
-        |           |           |
-        v           v           v
-    Vaults       Shares      Files
-        |           |           |
-        +-----------+-----------+
-                    |
-                    v
-             Business Services
-                    |
-        +-----------+-----------+
-        |           |           |
-        v           v           v
-   Authorization  Encryption  Validation
-        |           |           |
-        +-----------+-----------+
-                    |
-                    v
-             Drizzle ORM
-                    |
-                    v
-               PostgreSQL
+### 3.1 Authentication
 
-       Background Processing
-          |             |
-          v             v
-    Vault Expiry    File Cleanup
-      Scheduler       Worker
-```
+AWS Cognito is the identity provider.
 
-## 4. Source Code Organization
+The backend verifies Cognito access tokens before allowing access to protected routes. Authentication establishes the identity of the caller; it does not automatically grant access to every vault.
 
-```text
-src/
-├── authorization/
-├── config/
-├── db/
-│   ├── migrations/
-│   └── schema/
-├── infrastructure/
-│   ├── cognito/
-│   ├── email/
-│   ├── encryption/
-│   ├── jobs/
-│   └── storage/
-├── middleware/
-├── modules/
-│   ├── access-requests/
-│   ├── audit/
-│   ├── derived-copies/
-│   ├── files/
-│   ├── folders/
-│   ├── notifications/
-│   ├── shares/
-│   ├── users/
-│   └── vaults/
-├── app.ts
-└── server.ts
-```
+The application maintains its own user records in PostgreSQL.
 
-### Responsibilities
+### 3.2 Authorization
 
-- `authorization/`: Permission-related checks.
-- `config/`: Environment configuration and logging.
-- `db/`: PostgreSQL connection, schemas, migrations, and database utilities.
-- `infrastructure/`: Cognito integration, encryption, email, storage, and jobs.
-- `middleware/`: Authentication, user provisioning, error handling, and request handling.
-- `modules/`: Business functionality grouped by domain.
-- `app.ts`: Express application configuration and route registration.
-- `server.ts`: HTTP server startup and graceful shutdown.
+Authorization is evaluated separately from authentication.
 
-## 5. Request Processing Flow
-
-A typical protected API request follows this sequence:
-
-1. The client sends an HTTP request.
-2. Express applies application middleware.
-3. Authentication middleware verifies the Cognito access token.
-4. Provisioning middleware checks the application user where required.
-5. Route validation checks request input.
-6. The relevant controller invokes business services.
-7. Business services enforce authorization and business rules.
-8. Drizzle ORM executes database operations.
-9. The controller returns the HTTP response.
-
-Errors are passed through centralized error-handling middleware.
-
-## 6. Database Architecture
-
-PostgreSQL is the authoritative persistent data store.
-
-Drizzle ORM manages database access, with schema definitions under `src/db/schema/` and migrations under `src/db/migrations/`.
-
-### Main entities
-
-| Entity | Responsibility |
-|---|---|
-| Users | Application user records |
-| Folders | Vault organization |
-| Vaults | Encrypted content and lifecycle |
-| Shares | Recipient permissions and access state |
-| Share credentials | Hashed share passphrases |
-| Passphrase attempts | Failed and successful verification records |
-| Access requests | Requests to access vaults |
-| Write requests | Proposed changes to shared vault content |
-| Vault lineage | Relationships between source and derived vaults |
-| Files | Encrypted file metadata |
-| Cleanup jobs | Deferred storage cleanup |
-
-## 7. Encryption Architecture
-
-VaultShare uses envelope encryption.
-
-- Each vault has its own Data Encryption Key (DEK).
-- Vault content is encrypted using AES-256-GCM.
-- The DEK is encrypted using a Key Encryption Key (KEK).
-- Encrypted content and encrypted DEK are persisted in the database.
-- Nonce and authentication tag information are stored for authenticated decryption.
-
-The KEK is supplied through environment configuration and is not stored in the vault database records.
-
-## 8. Authentication and Authorization
-
-AWS Cognito handles identity authentication.
-
-The backend verifies access tokens and retrieves user information through the Cognito integration.
-
-Application-level permissions are evaluated separately from authentication.
-
-Shares define recipient permissions per vault:
-
+Vault permissions are assigned per share:
 - `READ`
 - `WRITE`
 
-A user's ability to access a vault depends on authentication, provisioning, share status, permission checks, passphrase verification, and applicable expiration and access-count rules.
+Access decisions consider the applicable share, its status, permissions, passphrase verification, expiration, and access-count restrictions.
 
-## 9. Vault Lifecycle and Expiration
+A user's permission on one vault must not be treated as permission on another vault.
 
-Vault expiration is processed by a dedicated scheduler.
+### 3.3 Authorization boundaries
 
-The scheduler periodically invokes expiration processing.
+The backend must enforce authorization in business services, not rely solely on client-side checks.
 
-Two expiry policies are supported:
+Owner-only operations must verify ownership. Reader operations must verify the selected share and its permitted actions.
 
-### DESTROY
+## 4. Encryption and Key Management
 
-- Marks the vault as destroyed.
-- Clears encrypted content and key material from the vault record.
-- Creates a cleanup job for associated resources.
+### 4.1 Envelope encryption
 
-### REVOKE_ACCESS
+VaultShare uses server-managed envelope encryption.
 
-- Marks the vault as expired.
-- Retains encrypted vault content.
-- Revokes active reader access by expiring shares.
+- Each vault receives an independent Data Encryption Key (DEK).
+- Vault content is encrypted using AES-256-GCM.
+- The DEK is encrypted using a Key Encryption Key (KEK).
+- Encrypted content, encrypted DEK, nonce, and authentication tag are persisted as encrypted vault data.
+- The KEK is supplied through environment configuration and is not stored in vault database records.
 
-Overall vault expiration takes priority over individual reader post-open expiration.
+### 4.2 Authenticated encryption
 
-## 10. File Storage and Cleanup
+AES-256-GCM provides confidentiality and integrity verification.
 
-File metadata is stored in PostgreSQL.
+Decryption must fail when the ciphertext or authentication data is invalid. Authentication tags must be verified before plaintext is accepted.
 
-Encrypted file blobs are stored in private local storage, outside the publicly served application directory.
+### 4.3 Key separation
 
-Storage operations use generated storage keys rather than trusting user-provided filenames as storage paths.
+A derived vault created after approval of a WRITE request receives a fresh encryption context and independent DEK. It must not reuse the source vault's DEK.
 
-A separate cleanup worker processes queued cleanup jobs.
+### 4.4 Key-management limitations
 
-## 11. Derived Vault Architecture
+The KEK is outside the vault database, but environment-based configuration alone does not establish a complete production key-management system.
 
-A WRITE recipient submits a proposed change through a write request.
+The following operational controls require separate verification before production:
+- Secure KEK provisioning and access restrictions.
+- KEK rotation and re-encryption procedures.
+- Backup and recovery of key material.
+- Emergency response to KEK compromise.
+- Prevention of key exposure through logs, diagnostics, or deployment configuration.
 
-The owner reviews the request.
+## 5. Passphrase Security
 
-On approval:
+Share passphrases are verified using Argon2id-based password hashing.
 
-1. The proposal is decrypted.
-2. A derived vault is created for the requesting user.
-3. The derived vault receives a fresh encryption context and DEK.
-4. The source and derived vault relationship is recorded in vault lineage.
+Passphrases must not be stored or logged as plaintext.
 
-The source vault is not directly overwritten by the approval process.
+Passphrase verification is separate from Cognito authentication. A valid Cognito identity does not bypass the passphrase requirement for a protected share.
 
-## 12. Background Processes
+Failed verification attempts must not increment the successful-open access counter.
 
-VaultShare uses separate background processes:
+## 6. Share Isolation
 
-| Process | Responsibility |
+Share permissions are scoped to individual vault shares.
+
+Revoking an individual reader's share must:
+- Revoke the selected share.
+- Preserve other readers' active shares.
+- Preserve the source vault's encrypted payload.
+- Preserve derived vaults and their lineage.
+
+The share-revocation isolation integration test verifies these behaviors.
+
+## 7. Vault Lifecycle Security
+
+Vault lifecycle operations enforce the distinction between revoking access and permanently destroying content.
+
+### 7.1 REVOKE_ACCESS
+
+When the source vault is revoked or expires under the `REVOKE_ACCESS` policy:
+- The source vault retains its encrypted payload.
+- Reader shares across the lineage are invalidated.
+- Descendant vaults are permanently destroyed.
+- Encrypted WRITE proposal payloads are cleared.
+- Pending WRITE requests are rejected.
+- Cleanup jobs are queued for destroyed descendants.
+
+### 7.2 DESTROY
+
+When a vault is destroyed:
+- Its encrypted content and key material are cleared from the vault record.
+- Descendant vaults across the lineage are also destroyed.
+- Shares associated with the affected lineage are invalidated.
+- Pending WRITE requests are rejected and proposal payloads cleared.
+- Cleanup jobs are queued for destroyed vault resources.
+
+### 7.3 Expiration precedence
+
+Overall vault expiration takes priority over an individual reader's post-open expiration.
+
+Once an individual reader's post-open access period expires, that share cannot be used again.
+
+A destroyed vault must not be restored through ordinary application operations.
+
+### 7.4 Lifecycle verification
+
+The lifecycle integration tests cover:
+- Source revocation with root payload retention.
+- Destruction of descendant generations.
+- Share invalidation across the lineage.
+- WRITE proposal payload clearing.
+- Rejection of pending WRITE requests.
+- Cleanup-job creation.
+- DESTROY expiry of the root and descendants.
+
+## 8. Concurrency and Transaction Safety
+
+Lifecycle operations and WRITE-request review operations can affect the same vault records.
+
+The implementation uses a consistent vault-first lock order for the relevant operations:
+1. Source vault.
+2. WRITE request.
+3. Share, where applicable.
+
+The WRITE approval versus source-revocation race test exercises competing operations and verifies the resulting lifecycle behavior.
+
+Database transactions and row-level locking are used to protect state transitions from conflicting operations.
+
+These tests provide targeted concurrency verification; they do not establish the absence of every possible race condition.
+
+## 9. File Storage and Cleanup
+
+Encrypted file blobs are stored in private local storage outside the publicly served application directory.
+
+Storage keys are generated by the application rather than derived directly from user-supplied filenames.
+
+Cleanup is handled asynchronously through cleanup jobs.
+
+The cleanup worker:
+- Claims eligible jobs with database locking.
+- Processes file-blob and vault cleanup tasks.
+- Treats an already-missing blob as successfully removed.
+- Retries eligible failures with backoff.
+- Marks jobs as failed after the configured maximum attempts.
+
+A permanently failed cleanup job requires operational investigation. Database payload clearing and physical blob deletion are separate operations; a queued cleanup job must not be interpreted as proof that every physical file has already been deleted.
+
+## 10. Logging and Sensitive Data
+
+Sensitive values must not appear in application logs or error responses.
+
+This includes:
+- Plaintext vault content.
+- Share passphrases.
+- Encryption keys and decrypted key material.
+- Authentication tokens.
+- Sensitive file contents.
+
+Logs should contain operational metadata sufficient for debugging without recording secret values.
+
+Production log-redaction behavior and negative tests for secret leakage must be verified before production deployment.
+
+## 11. Application-Level Security
+
+The Express application uses Helmet security headers and centralized error handling.
+
+Request payloads are validated using Zod at applicable route boundaries.
+
+File uploads use Multer and application-controlled storage paths.
+
+These controls reduce common input and application exposure risks but do not replace:
+- Comprehensive rate limiting.
+- Abuse detection.
+- Security monitoring.
+- Dependency vulnerability management.
+- Production infrastructure hardening.
+
+## 12. Threats and Mitigations
+
+| Threat | Intended mitigation |
 |---|---|
-| Expiry scheduler | Finds and processes expired vaults |
-| Cleanup worker | Processes pending file and vault cleanup jobs |
+| Unauthorized API access | Cognito access-token verification |
+| Unauthorized vault access | Per-vault authorization and share-state checks |
+| Passphrase disclosure | Argon2id hashing and secret-safe handling |
+| Database disclosure | Envelope encryption of vault content |
+| Ciphertext modification | AES-256-GCM authentication |
+| Cross-reader access | Individual share isolation |
+| Expired-link reuse | Share and vault lifecycle checks |
+| Source revocation bypass through derived copies | Descendant destruction across vault lineage |
+| Concurrent approval and revocation | Consistent lock order and transactional state changes |
+| Storage-path manipulation | Generated storage keys and private storage |
+| Incomplete physical cleanup | Durable cleanup jobs, retries, and failure states |
 
-These processes are started independently of the HTTP server.
+## 13. Known Gaps and Production Readiness
 
-## 13. Local Infrastructure
+The following areas must not be treated as complete merely because the core encryption and lifecycle tests pass:
 
-Docker Compose provides local development services:
+- Comprehensive API and upload/download rate limiting.
+- Security audit logging and audit-event retention.
+- KEK rotation and operational key recovery.
+- Production backup retention and deletion guarantees.
+- Cleanup-job monitoring and failed-job recovery procedures.
+- Production notification security and delivery controls.
+- Automated security scanning and dependency monitoring.
+- Negative tests proving secrets are absent from logs and API responses.
+- Production deployment hardening and incident-response procedures.
 
-| Service | Purpose |
+These areas remain part of the wider security and PRD compliance audit.
+
+## 14. Security Testing
+
+The following targeted tests have been reported passing during development:
+
+| Test | Verified behavior |
 |---|---|
-| PostgreSQL | Persistent application database |
-| Mailpit | Local SMTP testing and email inspection |
+| `authorization:test` | Authorization permission checks |
+| `encryption:test` | Encryption/decryption behavior |
+| `storage:test` | Encrypted storage behavior |
+| `lifecycle:test` | Vault lifecycle and descendant destruction |
+| `file-cleanup:test` | Cleanup worker behavior |
+| `write-race:test` | WRITE approval versus source-revocation race |
+| `share-isolation:test` | Individual reader-share revocation isolation |
 
-The application server runs separately using the Node.js development command.
+These are development integration tests, not a substitute for a full penetration test or independent security review.
 
-## 14. Architectural Principles
+## 15. Security Status
 
-- Modular layered monolith instead of premature microservices.
-- PostgreSQL as the authoritative persistent data store.
-- Separate authentication and application authorization.
-- Per-vault encryption keys.
-- Explicit vault and share lifecycle management.
-- Background processing for expiration and cleanup.
-- Private storage for encrypted file blobs.
-- Environment-based configuration.
+VaultShare has implemented core authentication, authorization, encryption, share isolation, lifecycle handling, and asynchronous cleanup mechanisms.
 
-## 15. Current Scope
-
-This document describes the implemented backend architecture. It does not imply that every listed module represents a complete production-ready feature or that a production deployment is available.
+The project remains under development. Production readiness depends on completing the remaining security, operational, monitoring, backup, and deployment controls described above.

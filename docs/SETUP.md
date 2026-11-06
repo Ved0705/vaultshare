@@ -4,11 +4,13 @@
 
 This guide explains how to configure and run the VaultShare backend in a local development environment.
 
-The project uses Node.js, TypeScript, Express, PostgreSQL, Drizzle ORM, Docker Compose, and AWS Cognito.
+The project uses Node.js, TypeScript, Express 5, PostgreSQL 17, Drizzle ORM, Docker Compose, and AWS Cognito.
+
+The local setup uses PostgreSQL and Mailpit through Docker Compose. The API and background processes run separately through Node.js.
 
 ## 2. Prerequisites
 
-Install the following:
+Install:
 
 - Node.js and npm
 - Git
@@ -46,7 +48,7 @@ Create a local `.env` file using `.env.example` as a reference.
 
 Do not overwrite an existing `.env` file.
 
-The application expects the following variables:
+The application expects the following configuration:
 
 | Variable | Purpose |
 |---|---|
@@ -63,9 +65,41 @@ The application expects the following variables:
 | `MAIL_FROM` | Sender email address |
 | `VAULT_KEK_BASE64` | Base64-encoded 32-byte encryption key |
 
-The actual configuration values belong in the private local `.env` file.
+For the local Docker Compose configuration, use:
 
-**Never commit `.env` or place real credentials in `.env.example`.**
+```env
+NODE_ENV=development
+PORT=3000
+
+DATABASE_URL=postgresql://vaultshare:local_dev_password@localhost:5433/vaultshare
+
+STORAGE_PATH=./private-storage
+
+MAIL_HOST=localhost
+MAIL_PORT=1025
+MAIL_FROM=no-reply@vaultshare.local
+
+COGNITO_USERINFO_URL=
+COGNITO_REGION=
+COGNITO_USER_POOL_ID=
+COGNITO_CLIENT_ID=
+
+VAULT_KEK_BASE64=
+```
+
+Configure the Cognito values using your development User Pool and application client.
+
+Generate a 32-byte encryption key encoded in Base64:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Set the generated value as `VAULT_KEK_BASE64`.
+
+Keep the key stable for the lifetime of the data encrypted with it. Replacing it without a corresponding key-rotation or re-encryption procedure can make existing vault content undecryptable.
+
+**Never commit `.env`, expose real credentials, or place encryption keys in `.env.example`.**
 
 ## 6. Start Local Infrastructure
 
@@ -89,7 +123,9 @@ docker compose ps
 | Mailpit SMTP | `localhost:1025` | Local email delivery |
 | Mailpit UI | `http://localhost:8025` | Inspect test emails |
 
-The PostgreSQL container uses an internal port of 5432 mapped to host port 5433.
+The PostgreSQL container uses internal port `5432`, mapped to host port `5433`.
+
+The Compose configuration binds these ports to localhost. Do not expose development services publicly.
 
 ## 7. Database Migrations
 
@@ -105,13 +141,13 @@ Test database connectivity:
 npm run db:test
 ```
 
-Migration files are maintained under:
+Migration files:
 
 ```text
 src/db/migrations/
 ```
 
-Schema definitions are maintained under:
+Schema definitions:
 
 ```text
 src/db/schema/
@@ -125,7 +161,7 @@ Start the development server:
 npm run dev
 ```
 
-The server uses the configured `PORT`, defaulting to 3000.
+The server uses the configured `PORT`, defaulting to `3000`.
 
 Check the health endpoint:
 
@@ -147,7 +183,7 @@ Expected response structure:
 
 ## 9. Background Processes
 
-VaultShare has two separate background processes.
+VaultShare has two independent background processes. Run each in a separate terminal.
 
 ### Vault expiry scheduler
 
@@ -155,23 +191,25 @@ VaultShare has two separate background processes.
 npm run expiry:scheduler
 ```
 
-Periodically processes expired vaults according to their configured expiry policy.
+The scheduler checks for expired vaults approximately every 60 seconds and invokes vault lifecycle processing.
 
-### File cleanup worker
+### File and vault cleanup worker
 
 ```powershell
 npm run cleanup:worker
 ```
 
-Processes pending cleanup jobs for stored resources.
+The cleanup worker processes pending file and destroyed-vault cleanup jobs.
 
-Run these processes separately from the API server.
+It checks for available work periodically, recovers stale processing claims, and retries failed jobs using exponential backoff.
+
+Jobs that exceed their configured maximum attempts are marked `FAILED`. These require operational investigation; do not assume physical deletion completed merely because a cleanup job was queued.
 
 ## 10. Email Testing
 
-VaultShare uses Nodemailer for email integration and Mailpit for local development testing.
+VaultShare uses Nodemailer for email integration and Mailpit for local SMTP testing.
 
-Start Mailpit through Docker Compose:
+Start Mailpit:
 
 ```powershell
 docker compose up -d mailpit
@@ -183,13 +221,13 @@ Run the email test:
 npm run email:test
 ```
 
-Inspect received messages at:
+Inspect received messages:
 
 ```text
 http://localhost:8025
 ```
 
-The email test verifies the configured SMTP integration. It does not imply that all application notification workflows are implemented.
+This test verifies configured SMTP integration. It does not establish that all application notification workflows are implemented.
 
 ## 11. Available Development Commands
 
@@ -203,11 +241,40 @@ The email test verifies the configured SMTP integration. It does not imply that 
 | `npm run authorization:test` | Run authorization tests |
 | `npm run encryption:test` | Run encryption tests |
 | `npm run storage:test` | Run storage tests |
+| `npm run lifecycle:test` | Run vault lifecycle integration tests |
+| `npm run file-cleanup:test` | Run file cleanup integration tests |
+| `npm run write-race:test` | Run write/revocation race tests |
+| `npm run share-isolation:test` | Run share revocation isolation tests |
 | `npm run email:test` | Test email integration |
 | `npm run expiry:scheduler` | Start vault expiry scheduler |
 | `npm run cleanup:worker` | Start cleanup worker |
 
-## 12. Build and Production-Mode Startup
+## 12. Verification Checklist
+
+Run the following checks after making backend changes:
+
+```powershell
+npm run typecheck
+npm run build
+npm run authorization:test
+npm run encryption:test
+npm run storage:test
+npm run db:test
+npm run lifecycle:test
+npm run file-cleanup:test
+npm run write-race:test
+npm run share-isolation:test
+```
+
+Check whitespace and patch formatting:
+
+```powershell
+git diff --check
+```
+
+Some integration tests require a working local PostgreSQL database and correctly configured environment variables.
+
+## 13. Build and Production-Mode Startup
 
 Compile the project:
 
@@ -223,26 +290,7 @@ npm run start
 
 The build output is generated in `dist/`.
 
-The application build alone does not constitute a production deployment. Production infrastructure, secrets management, HTTPS, monitoring, and operational procedures require separate configuration.
-
-## 13. Verification Checklist
-
-Run the following checks before considering a development change complete:
-
-```powershell
-npm run typecheck
-npm run build
-npm run authorization:test
-npm run encryption:test
-npm run storage:test
-npm run db:test
-```
-
-Check whitespace and patch formatting:
-
-```powershell
-git diff --check
-```
+A successful build does not mean the application is production-ready. Production deployment requires separate infrastructure, HTTPS, secure secrets management, monitoring, backup and recovery procedures, and operational controls.
 
 ## 14. Shutdown and Cleanup
 
@@ -258,7 +306,9 @@ To remove the local PostgreSQL volume as well:
 docker compose down -v
 ```
 
-**Warning:** `docker compose down -v` deletes the PostgreSQL Docker volume and its local database data. Do not run it unless that data can be discarded.
+**Warning:** `docker compose down -v` permanently deletes the PostgreSQL Docker volume and its local database data. Do not run it unless that data can be discarded.
+
+Private file storage under `STORAGE_PATH` is separate from the PostgreSQL Docker volume. Removing the Compose volume does not necessarily remove stored files.
 
 ## 15. Troubleshooting
 
@@ -266,7 +316,7 @@ docker compose down -v
 
 - Confirm Docker Desktop is running.
 - Check container status using `docker compose ps`.
-- Verify the database connection string uses the configured host port.
+- Verify `DATABASE_URL` uses host port `5433`.
 - Inspect PostgreSQL logs:
 
 ```powershell
@@ -275,18 +325,18 @@ docker compose logs postgres
 
 ### Mailpit unavailable
 
-Check the container:
+Inspect the container:
 
 ```powershell
 docker compose logs mailpit
 ```
 
-Confirm that the configured SMTP host and port match the local Compose configuration.
+Confirm the configured SMTP host and port match the local Compose configuration.
 
 ### Environment validation failure
 
 - Verify required environment variables are present.
-- Check URL formatting for Cognito and database configuration.
+- Check Cognito and database URL formatting.
 - Ensure the KEK is valid Base64 and decodes to exactly 32 bytes.
 - Do not share or commit the actual `.env` file.
 
@@ -300,15 +350,24 @@ npm run typecheck
 
 Resolve the reported errors before rebuilding.
 
-## 16. Operational Notes
+### Cleanup jobs remain pending or fail
 
-- Keep `.env` private.
-- Keep private storage outside publicly served directories.
+- Confirm PostgreSQL is available.
+- Confirm the cleanup worker is running.
+- Inspect cleanup job status and recorded error details in the database.
+- Investigate jobs marked `FAILED` before considering the associated storage cleanup complete.
+
+## 16. Security and Cost Notes
+
+- Keep `.env` and encryption keys private.
+- Keep encrypted file storage outside publicly served directories.
 - Do not expose database or SMTP development ports publicly.
-- Monitor background cleanup failures.
 - Back up required data before destructive maintenance.
 - Do not use local development credentials as production credentials.
+- Do not assume that AWS services or third-party integrations are permanently free. Check current pricing and usage limits before enabling paid services or deploying infrastructure.
 
----
+The local Docker setup is intended for development. It does not require deploying PostgreSQL or Mailpit to a paid cloud service.
 
-**Document status:** Local development and operations guide for the current VaultShare backend implementation.
+## 17. Document Status
+
+This guide describes the current local development setup and available operational commands. It is not a production deployment or disaster-recovery guide.

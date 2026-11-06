@@ -18,7 +18,7 @@ Include the token in the HTTP Authorization header:
 Authorization: Bearer <COGNITO_ACCESS_TOKEN>
 ```
 
-Vault routes and share-access routes additionally require a provisioned application user.
+Vault routes, share-access routes, shared-file routes, and access-request routes additionally require a provisioned application user.
 
 `GET /api/v1/auth/me` requires authentication.
 
@@ -37,15 +37,16 @@ Authentication does not automatically grant access to a vault. Application-level
 
 Base path: `/api/v1/vaults`
 
+All vault endpoints require authentication and a provisioned user.
+
 | Method | Endpoint | Description |
 |---|---|---|
 | POST | `/api/v1/vaults` | Create a vault |
 | GET | `/api/v1/vaults` | List vaults |
 | GET | `/api/v1/vaults/:id` | Retrieve a vault |
 | PATCH | `/api/v1/vaults/:id` | Update vault metadata |
-| DELETE | `/api/v1/vaults/:id` | Delete a vault |
-
-All vault endpoints require authentication and a provisioned user.
+| POST | `/api/v1/vaults/:id/revoke` | Revoke vault access and destroy derived vaults |
+| DELETE | `/api/v1/vaults/:id` | Permanently destroy a vault |
 
 ### Create vault
 
@@ -65,6 +66,7 @@ Request body:
 ```
 
 Validation:
+
 - `name`: 1–150 characters.
 - `description`: optional, maximum 500 characters.
 - `content`: 1–900,000 characters.
@@ -88,11 +90,28 @@ Query parameters:
 `PATCH /api/v1/vaults/:id`
 
 Supports updating:
+
 - `name`
 - `description`
 - `folderId`
 
 At least one field must be provided.
+
+### Revoke vault access
+
+`POST /api/v1/vaults/:id/revoke`
+
+Revokes access to the source vault and expires active and pending shares across its lineage.
+
+All derived vaults are permanently destroyed, including their encrypted payloads. The source vault's encrypted payload is retained.
+
+This operation is irreversible for the derived vaults.
+
+### Permanently destroy a vault
+
+`DELETE /api/v1/vaults/:id`
+
+Permanently destroys the selected vault and its derived vaults. Encrypted payloads are cleared and physical file cleanup is queued for asynchronous processing.
 
 ## 5. Share Management
 
@@ -121,15 +140,20 @@ Request body:
 ```
 
 Validation:
+
 - `readerId`: UUID.
 - `permissions`: one or both of `READ` and `WRITE`, without duplicates.
 - `maxAccessCount`: integer from 1 to 1000.
 - `postOpenTtlSeconds`: positive integer or null.
 - `passphrase`: 12–128 characters.
 
+Individual share revocation affects the selected share and does not destroy the vault or its derived-vault lineage.
+
 ## 6. Share Access
 
 Base path: `/api/v1/shares`
+
+These routes require authentication and a provisioned user.
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -137,8 +161,6 @@ Base path: `/api/v1/shares`
 | POST | `/api/v1/shares/:shareCode/write-requests` | Submit a proposed content change |
 | POST | `/api/v1/shares/:shareCode/files/list` | List files available through a share |
 | POST | `/api/v1/shares/:shareCode/files/:fileId/download` | Download a shared file |
-
-These routes require authentication and a provisioned user.
 
 ### Open a share
 
@@ -162,6 +184,7 @@ Request body:
 ```
 
 Validation:
+
 - `proposedContent`: 1–900,000 characters.
 - `passphrase`: 1–128 characters.
 
@@ -209,7 +232,11 @@ Base path: `/api/v1/vaults/:id/write-requests`
 | GET | `/api/v1/vaults/:id/write-requests/:requestId` | Retrieve a write request |
 | POST | `/api/v1/vaults/:id/write-requests/:requestId/review` | Approve or reject a write request |
 
-Review request body:
+### Review a write request
+
+`POST /api/v1/vaults/:id/write-requests/:requestId/review`
+
+Request body:
 
 ```json
 {
@@ -218,6 +245,7 @@ Review request body:
 ```
 
 Allowed decisions:
+
 - `APPROVE`
 - `REJECT`
 
@@ -236,4 +264,76 @@ Base path: `/api/v1/vaults/:id/files`
 
 ### Upload file
 
-`POST /api
+`POST /api/v1/vaults/:id/files`
+
+Content type: `multipart/form-data`
+
+Form field:
+
+- `file`: the file to upload.
+
+The current upload middleware accepts one file per request and enforces a maximum file size of 10 MB. Filenames must be present and no longer than 255 characters.
+
+### List vault files
+
+`GET /api/v1/vaults/:id/files`
+
+Lists files associated with the specified vault, subject to authorization.
+
+### Download a file
+
+`GET /api/v1/vaults/:id/files/:fileId/download`
+
+Downloads a file associated with the specified vault, subject to authorization.
+
+### Delete a file
+
+`DELETE /api/v1/vaults/:id/files/:fileId`
+
+Deletes a file associated with the specified vault. Physical blob cleanup is handled by the cleanup process.
+
+## 10. Shared File Operations
+
+Base path: `/api/v1/shares`
+
+These routes require authentication and a provisioned user.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/v1/shares/:shareCode/files/list` | List files accessible through a share |
+| POST | `/api/v1/shares/:shareCode/files/:fileId/download` | Download a file accessible through a share |
+
+Shared-file operations enforce the applicable share permissions and access restrictions.
+
+## 11. Lifecycle and Asynchronous Cleanup
+
+Vault expiry is processed by the expiry scheduler.
+
+Depending on the configured expiry policy:
+
+- `DESTROY`: the source vault and its derived vaults are destroyed.
+- `REVOKE_ACCESS`: access to the source vault is revoked, its encrypted payload is retained, and its derived vaults are destroyed.
+
+In both cases, active and pending shares across the affected lineage are invalidated. Pending write requests are rejected and their encrypted proposal payloads are cleared.
+
+Physical file deletion is asynchronous. Cleanup jobs are processed by the cleanup worker, which retries failed jobs and marks jobs as `FAILED` after the configured maximum number of attempts.
+
+## 12. Response and Error Handling
+
+Successful controller responses generally use a JSON envelope containing a `success` field and either `data` or a message.
+
+Errors are passed through the centralized error handler.
+
+Clients should not assume that authentication alone grants permission to access a vault or file. Authorization is evaluated by the relevant application service.
+
+## 13. Implementation Notes
+
+- The API is implemented using Express 5.
+- Request validation uses Zod schemas.
+- Authentication uses AWS Cognito access tokens.
+- Vault content and file operations are subject to application-level authorization.
+- The API currently does not expose a generated OpenAPI/Swagger specification.
+
+---
+
+This document describes the routes registered in the current application. Request validation details should be kept synchronized with their corresponding Zod schemas as the implementation evolves.
