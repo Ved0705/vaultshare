@@ -6,6 +6,7 @@ import { cleanupJobs } from "../../db/schema/cleanup-jobs.js";
 import { files } from "../../db/schema/files.js";
 import { vaults } from "../../db/schema/vaults.js";
 import { deleteStoredFile } from "./file-storage.service.js";
+import {pathToFileURL} from "node:url";
 
 function isMissingFile(error: unknown): boolean {
     return (
@@ -201,4 +202,6 @@ async function startCleanupWorker() {
     }
 }
 
-startCleanupWorker();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+    startCleanupWorker();
+}

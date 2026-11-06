@@ -28,7 +28,44 @@ export async function reviewWriteRequestService(
     return db.transaction(async (tx) => {
         const now = new Date();
 
-        // Lock the request to prevent duplicate reviews.
+        // Read the request reference without acquiring a row lock.
+        const [requestReference] = await tx
+            .select({
+                id: writeRequests.id,
+                sourceVaultId: writeRequests.sourceVaultId,
+            })
+            .from(writeRequests)
+            .where(eq(writeRequests.id, input.requestId))
+            .limit(1);
+
+        if (
+            !requestReference ||
+            requestReference.sourceVaultId !== input.vaultId
+        ) {
+            throw new AppError(
+                404,
+                "REQUEST_NOT_FOUND",
+                "Write request not found.",
+            );
+        }
+
+        // Lock the source vault first to maintain consistent lock ordering.
+        const [sourceVault] = await tx
+            .select()
+            .from(vaults)
+            .where(eq(vaults.id, requestReference.sourceVaultId))
+            .for("update")
+            .limit(1);
+
+        if (!sourceVault || sourceVault.ownerId !== input.ownerId) {
+            throw new AppError(
+                404,
+                "VAULT_NOT_FOUND",
+                "Vault not found.",
+            );
+        }
+
+        // Lock and revalidate the request after acquiring the vault lock.
         const [request] = await tx
             .select()
             .from(writeRequests)
@@ -36,35 +73,34 @@ export async function reviewWriteRequestService(
             .for("update")
             .limit(1);
 
-        if (!request) {
-            throw new AppError(404, "REQUEST_NOT_FOUND", "Write request not found.");
+        if (
+            !request ||
+            request.sourceVaultId !== sourceVault.id
+        ) {
+            throw new AppError(
+                404,
+                "REQUEST_NOT_FOUND",
+                "Write request not found.",
+            );
         }
 
         if (request.status !== "PENDING") {
-            throw new AppError(409, "REQUEST_ALREADY_REVIEWED", "This request has already been reviewed.");
-        }
-
-        if (request.sourceVaultId !== input.vaultId) {
-            throw new AppError(404, "REQUEST_NOT_FOUND", "Write request not found.");
-        }
-
-        // Lock the original vault before locking the share.
-        const [sourceVault] = await tx
-            .select()
-            .from(vaults)
-            .where(eq(vaults.id, request.sourceVaultId))
-            .for("update")
-            .limit(1);
-
-        if (!sourceVault || sourceVault.ownerId !== input.ownerId) {
-            throw new AppError(404, "VAULT_NOT_FOUND", "Vault not found.");
+            throw new AppError(
+                409,
+                "REQUEST_ALREADY_REVIEWED",
+                "This request has already been reviewed.",
+            );
         }
 
         if (
             sourceVault.status !== "ACTIVE" ||
             (sourceVault.expiresAt && sourceVault.expiresAt <= now)
         ) {
-            throw new AppError(410, "VAULT_UNAVAILABLE", "The original vault is no longer active.");
+            throw new AppError(
+                410,
+                "VAULT_UNAVAILABLE",
+                "The original vault is no longer active.",
+            );
         }
 
         // Rejection remains possible even if the originating share was revoked.
@@ -87,7 +123,7 @@ export async function reviewWriteRequestService(
         }
 
         // Approval requires the originating share to remain valid.
-        // Lock order: request -> vault -> share.
+        // Lock order: source vault -> request -> share.
         const [share] = await tx
             .select()
             .from(shares)
@@ -138,7 +174,10 @@ export async function reviewWriteRequestService(
 
         // Generate a completely independent derived vault.
         const derivedVaultId = randomUUID();
-        const encrypted = encryptVaultContent(derivedVaultId, proposedContent);
+        const encrypted = encryptVaultContent(
+            derivedVaultId,
+            proposedContent,
+        );
 
         const [derivedVault] = await tx
             .insert(vaults)

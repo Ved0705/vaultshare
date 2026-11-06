@@ -1,16 +1,17 @@
 
-import type { Request, Response, NextFunction } from "express";
-import type { vaults } from "../../db/schema/vaults.js";
-import {deleteVaultService} from "./vault.service.js";
-import { AppError } from "../../shared/app-error.js";
-import { getAuthenticatedUserId } from "../../shared/get-authenticated-user.js";
-
 import {
     createVaultService,
     getVaultService,
     listVaultsService,
     updateVaultService,
+    deleteVaultService,
+    revokeVaultService,
 } from "./vault.service.js";
+import type { Request, Response, NextFunction } from "express";
+import type { vaults } from "../../db/schema/vaults.js";
+import { AppError } from "../../shared/app-error.js";
+import { getAuthenticatedUserId } from "../../shared/get-authenticated-user.js";
+import {revokeShareController} from "../shares/share-revocation.controller.js";
 
 import {
     createVaultSchema,
@@ -218,6 +219,35 @@ export async function deleteVaultController(
         res.status(200).json({
             success: true,
             message: "Vault permanently destroyed.",
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+export async function revokeVaultController(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+) {
+    try {
+        const parsed = vaultIdParamSchema.safeParse(req.params);
+
+        if (!parsed.success) {
+            throw new AppError(
+                400,
+                "VALIDATION_ERROR",
+                "Invalid vault ID",
+            );
+        }
+
+        await revokeVaultService(
+            parsed.data.id,
+            getAuthenticatedUserId(req),
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Vault access revoked. Derived copies destroyed.",
         });
     } catch (error) {
         next(error);

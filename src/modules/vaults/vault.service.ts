@@ -1,11 +1,5 @@
-
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
-
-import { db } from "../../db/client.js";
-import { vaults } from "../../db/schema/vaults.js";
-import { shares } from "../../db/schema/shares.js";
-import { cleanupJobs } from "../../db/schema/cleanup-jobs.js";
+import { applyVaultLifecycleService } from "./vault-lineage-destruction.service.js";
 import { AppError } from "../../shared/app-error.js";
 
 import {
@@ -241,68 +235,22 @@ export async function updateVaultService(
 export async function deleteVaultService(
     vaultId: string,
     ownerId: string,
-): Promise<void> {
-    await db.transaction(async (tx) => {
-        const [vault] = await tx
-            .select({
-                id: vaults.id,
-                status: vaults.status,
-            })
-            .from(vaults)
-            .where(
-                and(
-                    eq(vaults.id, vaultId),
-                    eq(vaults.ownerId, ownerId),
-                ),
-            )
-            .for("update")
-            .limit(1);
-
-        if (!vault) {
-            throw new AppError(
-                404,
-                "VAULT_NOT_FOUND",
-                "Vault not found.",
-            );
-        }
-
-        if (vault.status === "DESTROYED") {
-            return;
-        }
-
-        const now = new Date();
-
-        await tx
-            .update(vaults)
-            .set({
-                status: "DESTROYED",
-                encryptedContent: "",
-                encryptedDek: "",
-                encryptionNonce: "",
-                encryptionTag: "",
-                updatedAt: now,
-            })
-            .where(eq(vaults.id, vault.id));
-
-        await tx
-            .update(shares)
-            .set({
-                status: "expired",
-                updatedAt: now,
-            })
-            .where(
-                and(
-                    eq(shares.vaultId, vault.id),
-                    eq(shares.status, "active"),
-                ),
-            );
-
-        await tx
-            .insert(cleanupJobs)
-            .values({
-                resourceType: "VAULT",
-                resourceId: vault.id,
-            })
-            .onConflictDoNothing();
+) {
+    return applyVaultLifecycleService({
+        vaultId,
+        ownerId,
+        rootLifecycle: "DESTROYED",
+        destroyRootPayload: true,
+    });
+}
+export async function revokeVaultService(
+    vaultId: string,
+    ownerId: string,
+) {
+    return applyVaultLifecycleService({
+        vaultId,
+        ownerId,
+        rootLifecycle: "REVOKED",
+        destroyRootPayload: false,
     });
 }

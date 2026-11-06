@@ -5,6 +5,7 @@ import { requireProvisionedUser } from "../../middleware/require-provisioned-use
 import { reviewWriteRequestController } from "../shares/write-request-review.controller.js";
 import shareRevocationRoutes from "../shares/share-revocation.routes.js";
 import accessRequestOwnerRoutes from "../shares/access-request-owner.routes.js";
+import {revokeVaultController} from "./vault.controller.js";
 import {
     createVaultController,
     listVaultsController,
@@ -27,6 +28,7 @@ router.post("/", createVaultController);
 router.get("/", listVaultsController);
 router.get("/:id", getVaultController);
 router.patch("/:id", updateVaultController);
+router.post("/:id/revoke", revokeVaultController);
 router.delete("/:id", deleteVaultController);
 router.use("/:id/shares", shareRevocationRoutes);
 router.post(

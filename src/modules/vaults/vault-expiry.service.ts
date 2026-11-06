@@ -1,78 +1,44 @@
-
 import { and, eq, lte, isNotNull } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import { vaults } from "../../db/schema/vaults.js";
-import { shares } from "../../db/schema/shares.js";
-import { cleanupJobs } from "../../db/schema/cleanup-jobs.js";
+
+import { applyVaultLifecycleService } from "./vault-lineage-destruction.service.js";
 
 export async function processExpiredVaults(): Promise<number> {
-    return db.transaction(async (tx) => {
-        const now = new Date();
+    const now = new Date();
 
-        const expiredVaults = await tx
-            .select({
-                id: vaults.id,
-                expiryPolicy: vaults.expiryPolicy,
-            })
-            .from(vaults)
-            .where(
-                and(
-                    eq(vaults.status, "ACTIVE"),
-                    isNotNull(vaults.expiresAt),
-                    lte(vaults.expiresAt, now),
-                ),
-            )
-            .for("update", { skipLocked: true })
-            .limit(50);
+    const expiredVaults = await db
+        .select({
+            id: vaults.id,
+            expiryPolicy: vaults.expiryPolicy,
+        })
+        .from(vaults)
+        .where(
+            and(
+                eq(vaults.status, "ACTIVE"),
+                isNotNull(vaults.expiresAt),
+                lte(vaults.expiresAt, now),
+            ),
+        )
+        .limit(50);
 
-        for (const vault of expiredVaults) {
-            if (vault.expiryPolicy === "DESTROY") {
-                await tx
-                    .update(vaults)
-                    .set({
-                        status: "DESTROYED",
-                        encryptedContent: "",
-                        encryptedDek: "",
-                        encryptionNonce: "",
-                        encryptionTag: "",
-                        updatedAt: now,
-                    })
-                    .where(eq(vaults.id, vault.id));
+    let processed = 0;
 
-                await tx
-                    .insert(cleanupJobs)
-                    .values({
-                        resourceType: "VAULT",
-                        resourceId: vault.id,
-                    })
-                    .onConflictDoNothing();
-            } else {
-                // Preserve owner access while invalidating readers.
-                await tx
-                    .update(vaults)
-                    .set({
-                        status: "EXPIRED",
-                        updatedAt: now,
-                    })
-                    .where(eq(vaults.id, vault.id));
-            }
+    for (const vault of expiredVaults) {
+        const destroyRoot = vault.expiryPolicy === "DESTROY";
 
-            // Invalidate all active reader shares.
-            await tx
-                .update(shares)
-                .set({
-                    status: "expired",
-                    updatedAt: now,
-                })
-                .where(
-                    and(
-                        eq(shares.vaultId, vault.id),
-                        eq(shares.status, "active"),
-                    ),
-                );
+        const result = await applyVaultLifecycleService({
+            vaultId: vault.id,
+            rootLifecycle: destroyRoot ? "DESTROYED" : "EXPIRED",
+            destroyRootPayload: destroyRoot,
+            onlyIfExpired: true,
+        });
+
+        if (result.processed) {
+            processed++;
         }
+    }
 
-        return expiredVaults.length;
-    });
+    return processed;
 }
