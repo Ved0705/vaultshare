@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Pool } from "pg";
 import { env } from "../config/env.js";
-import { rewrapKekEncryptedDek } from "../infrastructure/encryption/encryption.service.js";
+import { rewrapKekEncryptedDek } from "./encryption.service.js";
 
 const APPLY = process.argv.includes("--apply");
 if (env.VAULT_KEK_CURRENT_VERSION !== 2) {
