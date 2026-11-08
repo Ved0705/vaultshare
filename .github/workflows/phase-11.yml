@@ -6,10 +6,12 @@ on:
       - master
       - phase-11-completion
       - frontend/v1-dashboard
+      - frontend/product-replacement
   pull_request:
     branches:
       - master
       - frontend/v1-dashboard
+      - frontend/product-replacement
   workflow_dispatch:
 
 jobs:
