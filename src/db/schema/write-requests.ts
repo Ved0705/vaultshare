@@ -4,6 +4,7 @@ import {
     varchar,
     text,
     timestamp,
+    integer,
     index,
     unique,
     check,
