@@ -270,6 +270,21 @@ async function run() {
             "Unrelated source payload must remain intact",
         );
 
+        const revokedShares = await db
+            .select()
+            .from(shares)
+            .where(inArray(shares.id, fixtureShareIds));
+        assert.equal(revokedShares.length, 2);
+        assert.ok(revokedShares.every((share) => share.status === "revoked"));
+
+        const clearedRequests = await db
+            .select()
+            .from(writeRequests)
+            .where(inArray(writeRequests.id, fixtureWriteRequestIds));
+        assert.equal(clearedRequests.length, 2);
+        assert.ok(clearedRequests.every((request) => request.encryptedContent === ""));
+        assert.ok(clearedRequests.every((request) => request.encryptedDek === ""));
+
         const fileRows = await db
             .select()
             .from(files)
