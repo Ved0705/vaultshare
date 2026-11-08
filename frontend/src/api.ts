@@ -20,6 +20,7 @@ export type Folder = { id: string; name: string; createdAt?: string };
 export type AuditEvent = { id: string; action: string; method: string; route: string; statusCode: number; createdAt: string };
 export type VaultDetail = Vault & { content: string };
 export type VaultFile = { id: string; originalName: string; mimeType?: string; sizeBytes?: number; createdAt?: string };
+export type VaultShare = { id: string; readerId: string; readerEmail: string; permissions: ("READ" | "WRITE")[]; status: "pending" | "active" | "expired" | "revoked"; maxAccessCount: number; successfulOpenCount: number; sharedAt: string; firstOpenedAt: string | null; postOpenTtlSeconds: number | null; postOpenExpiresAt: string | null; revokedAt: string | null };
 export type ShareResult = { id: string; shareCode: string; vaultId: string; readerId: string; permissions: ("READ" | "WRITE")[]; status: string; maxAccessCount: number; successfulOpenCount: number; postOpenTtlSeconds: number | null; sharedAt: string };
 export type OpenedShare = { shareId: string; shareCode: string; permissions: ("READ" | "WRITE")[]; successfulOpenCount: number; remainingAccesses: number; content?: string; canRequestWrite: boolean; postOpenExpiresAt: string | null; vaultExpiresAt: string | null };
 export type SharedVaultFile = { id: string; originalName: string; mimeType?: string; sizeBytes?: number; createdAt?: string };
@@ -103,6 +104,14 @@ export const api = {
     request<{ requestId: string; status: string; derivedVault?: { id: string; name: string }; reviewedAt: string }>(`/vaults/${vaultId}/write-requests/${requestId}/review`, { method: "POST", body: JSON.stringify({ decision }) }),
   createShare: (vaultId: string, input: { readerId: string; permissions: ("READ" | "WRITE")[]; maxAccessCount: number; postOpenTtlSeconds: number | null; passphrase: string }) =>
     request<ShareResult>(`/vaults/${vaultId}/shares`, { method: "POST", body: JSON.stringify(input) }),
+  listVaultShares: (vaultId: string) =>
+    request<VaultShare[]>(`/vaults/${vaultId}/shares`),
+  revokeShare: (vaultId: string, shareId: string) =>
+    request<{ share: { id: string; status: string; revokedAt: string | null } }>(`/vaults/${vaultId}/shares/${shareId}/revoke`, { method: "PATCH" }),
+  revokeAllShares: (vaultId: string) =>
+    request<{ revokedCount: number }>(`/vaults/${vaultId}/shares/revoke-all`, { method: "PATCH" }),
+  extendShare: (vaultId: string, shareId: string, input: { additionalAccesses?: number; extendPostOpenBySeconds?: number }) =>
+    request<{ id: string; status: string; maxAccessCount: number; successfulOpenCount: number; postOpenExpiresAt: string | null }>(`/vaults/${vaultId}/shares/${shareId}/extend`, { method: "PATCH", body: JSON.stringify(input) }),
   listVaults: () => request<Vault[]>("/vaults?limit=100&offset=0"),
   createVault: (input: { name: string; description?: string; content: string; overallTtlSeconds: number; expiryPolicy: "DESTROY" | "REVOKE_ACCESS"; folderId: string | null }) =>
     request<Vault>("/vaults", { method: "POST", body: JSON.stringify(input) }),
