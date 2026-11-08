@@ -69,6 +69,7 @@ This is an engineering compliance audit, not a security certification or a claim
 | Only successful opens consume access count; failed passphrases do not | Share-open transaction and attempt tracking | Implemented + share-access tests |
 | Owner can extend exhausted access count while reader post-open window remains valid | PATCH /api/v1/vaults/:id/shares/:shareId/extend | Implemented |
 | Owner can extend post-open TTL, capped by overall TTL | Share extension service | Implemented |
+| Reader can submit renewal/additional-access request for owner approval | No request table, route, or review workflow found | Gap; post-open-expiry semantics must be reconciled with the locked permanent-expiry rule before implementation |
 | Revoke one reader without affecting others | Individual share revocation | Implemented + isolation test |
 | Revoke all shares | Revoke-all endpoint | Implemented |
 
@@ -117,6 +118,7 @@ A storage quota needs an approved definition (per account, per vault, treatment 
 | Do not include sensitive content in emails | Generic metadata-only templates; no vault content/name, filename, share code, passphrase or request message/response | Implemented |
 | Transactional notification enqueue and retry | Outbox write shares business transaction; worker retries up to five attempts and uses SKIP LOCKED | Implemented + Mailpit integration coverage |
 | Notification delivery runs separately from API | npm run notifications:worker | Implemented; operator must start it |
+| In-app/web notification inbox | No user-notification persistence, list, or read-state endpoint found; current outbox is email delivery only | Gap; UI delivery model requires frontend work |
 | Audit successful and denied API requests | Middleware records actor, sanitized route, method, resource UUID where available and status | Implemented |
 | User can view own audit history | GET /api/v1/audit-events with bounded pagination (added in this branch) | Implemented in this branch; CI pending |
 | Tamper-proof ledger / guaranteed synchronous audit writes | Audit persistence is asynchronous after response completion | Not guaranteed; do not claim tamper-proof or gap-free evidence |
@@ -148,21 +150,23 @@ A storage quota needs an approved definition (per account, per vault, treatment 
 
 These items cannot honestly be marked complete from repository code alone:
 
-1. **Aggregate storage quotas:** approve per-account/per-vault limits and enforcement semantics.
-2. **Production KEK custody:** select a no-cost V1-compatible arrangement or explicitly defer production deployment; do not introduce paid KMS without approval.
-3. **Production email provider:** validate sender domain, deliverability, bounce handling and alerting. Mailpit is local test infrastructure only.
-4. **Backup/restore drill:** perform a real isolated restore and record the result; choose retention and deletion propagation rules.
-5. **Distributed rate limiting:** required before horizontal API scaling; current in-memory counters are per process.
-6. **Monitoring and incident response:** configure operational alerting and response ownership.
-7. **External security review:** run independent penetration testing and dependency/security scanning before public production.
-8. **Frontend acceptance:** this repository is a backend API; browser UX cannot be accepted without the client application.
-9. **Cognito live integration:** run destructive account deletion against dedicated development identities, not production accounts.
-10. **Zero-cost validation:** verify current AWS and third-party pricing/limits before deployment. No paid infrastructure is approved by this audit.
+1. **Reader renewal/additional-access requests:** reconcile the approved request workflow with the locked rule that post-open expiry permanently ends access; the repository currently implements owner-direct extension only.
+2. **In-app/web notifications:** email outbox is implemented, but a persistent in-app inbox and frontend notification surface are not.
+3. **Aggregate storage quotas:** approve per-account/per-vault limits and enforcement semantics.
+4. **Production KEK custody:** select a no-cost V1-compatible arrangement or explicitly defer production deployment; do not introduce paid KMS without approval.
+5. **Production email provider:** validate sender domain, deliverability, bounce handling and alerting. Mailpit is local test infrastructure only.
+6. **Backup/restore drill:** perform a real isolated restore and record the result; choose retention and deletion propagation rules.
+7. **Distributed rate limiting:** required before horizontal API scaling; current in-memory counters are per process.
+8. **Monitoring and incident response:** configure operational alerting and response ownership.
+9. **External security review:** run independent penetration testing and dependency/security scanning before public production.
+10. **Frontend acceptance:** this repository is a backend API; browser UX cannot be accepted without the client application.
+11. **Cognito live integration:** run destructive account deletion against dedicated development identities, not production accounts.
+12. **Zero-cost validation:** verify current AWS and third-party pricing/limits before deployment. No paid infrastructure is approved by this audit.
 
 ## 12. Audit conclusion
 
-The backend now covers the main approved V1 workflows: encrypted vaults/files, Cognito-backed identity, per-vault sharing, access and WRITE requests, renewal/count extension, derived-copy lineage, lifecycle destruction, account deletion, folder CRUD, metadata-only notifications, audit capture/history, and configurable single-file upload size.
+The backend now covers the main approved V1 workflows: encrypted vaults/files, Cognito-backed identity, per-vault sharing, access and WRITE requests, owner-controlled share extension/count renewal, derived-copy lineage, lifecycle destruction, account deletion, folder CRUD, metadata-only email notifications, audit capture/history, and configurable single-file upload size. Reader-submitted renewal requests and in-app notifications remain gaps.
 
 The Phase 13 branch adds the missing folder CRUD endpoints, generated passphrases, personal audit-history endpoint, configurable upload limit, OpenAPI contract, and updated compliance/release documentation. These changes remain subject to the branch's CI result and PR review.
 
-VaultShare is **not yet production-ready**. Aggregate quotas, real provider integrations, tested backup recovery, production key custody, monitoring, distributed rate limiting, frontend acceptance, and zero-cost deployment validation remain release gates.
+VaultShare is **not yet production-ready**. Reader-submitted renewal requests, in-app notifications, aggregate quotas, real provider integrations, tested backup recovery, production key custody, monitoring, distributed rate limiting, frontend acceptance, and zero-cost deployment validation remain release gates.
