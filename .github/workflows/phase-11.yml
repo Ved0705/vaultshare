@@ -3,6 +3,7 @@ name: Phase 11 verification
 on:
   push:
     branches:
+      - master
       - phase-11-completion
   pull_request:
     branches:
@@ -73,6 +74,21 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Database connectivity
+        run: npm run db:test
+
+      - name: Authorization unit tests
+        run: npm run authorization:test
+
+      - name: Encryption unit tests
+        run: npm run encryption:test
+
+      - name: Private storage unit tests
+        run: npm run storage:test
+
+      - name: File cleanup integration
+        run: npm run file-cleanup:test
 
       - name: Account deletion integration
         run: npm run account-deletion:test
