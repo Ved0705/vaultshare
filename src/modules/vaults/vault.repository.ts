@@ -5,11 +5,14 @@ import {
     eq,
     gt,
     isNull,
+    isNotNull,
     or,
 } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import { vaults } from "../../db/schema/vaults.js";
+import { shares } from "../../db/schema/shares.js";
+import { AppError } from "../../shared/app-error.js";
 
 type NewVault = typeof vaults.$inferInsert;
 
@@ -95,38 +98,71 @@ export async function updateVaultMetadata(
 ) {
     const now = new Date();
 
-    const [vault] = await db
-        .update(vaults)
-        .set({
-            ...data,
-            updatedAt: now,
-        })
-        .where(
-            and(
-                eq(vaults.id, vaultId),
-                eq(vaults.ownerId, ownerId),
+    return db.transaction(async (tx) => {
+        // Serialize edits with reader opens: openShareService locks this row
+        // before recording firstOpenedAt.
+        const [vault] = await tx
+            .select({ id: vaults.id })
+            .from(vaults)
+            .where(
+                and(
+                    eq(vaults.id, vaultId),
+                    eq(vaults.ownerId, ownerId),
+                ),
+            )
+            .for("update")
+            .limit(1);
 
-                // ACTIVE vaults, or expired/revoked REVOKE_ACCESS vaults.
-                or(
-                    eq(vaults.status, "ACTIVE"),
-                    and(
-                        eq(vaults.expiryPolicy, "REVOKE_ACCESS"),
-                        or(
-                            eq(vaults.status, "EXPIRED"),
-                            eq(vaults.status, "REVOKED"),
+        if (!vault) return null;
+
+        const [openedShare] = await tx
+            .select({ id: shares.id })
+            .from(shares)
+            .where(
+                and(
+                    eq(shares.vaultId, vaultId),
+                    isNotNull(shares.firstOpenedAt),
+                ),
+            )
+            .limit(1);
+
+        if (openedShare) {
+            throw new AppError(
+                409,
+                "VAULT_IMMUTABLE",
+                "A vault cannot be edited after a reader has opened it.",
+            );
+        }
+
+        const [updated] = await tx
+            .update(vaults)
+            .set({
+                ...data,
+                updatedAt: now,
+            })
+            .where(
+                and(
+                    eq(vaults.id, vaultId),
+                    eq(vaults.ownerId, ownerId),
+                    or(
+                        eq(vaults.status, "ACTIVE"),
+                        and(
+                            eq(vaults.expiryPolicy, "REVOKE_ACCESS"),
+                            or(
+                                eq(vaults.status, "EXPIRED"),
+                                eq(vaults.status, "REVOKED"),
+                            ),
                         ),
                     ),
+                    or(
+                        eq(vaults.expiryPolicy, "REVOKE_ACCESS"),
+                        isNull(vaults.expiresAt),
+                        gt(vaults.expiresAt, now),
+                    ),
                 ),
+            )
+            .returning();
 
-                // DESTROY-policy vaults cannot be updated after expiry.
-                or(
-                    eq(vaults.expiryPolicy, "REVOKE_ACCESS"),
-                    isNull(vaults.expiresAt),
-                    gt(vaults.expiresAt, now),
-                ),
-            ),
-        )
-        .returning();
-
-    return vault ?? null;
+        return updated ?? null;
+    });
 }
