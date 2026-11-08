@@ -2,9 +2,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../shared/app-error.js";
 import { accessTokenVerifier } from "../infrastructure/cognito/token-verifier.js";
-import { db } from "../db/client.js";
-import { revokedAccessTokens } from "../db/schema/revoked-access-tokens.js";
-import { eq } from "drizzle-orm";
+import { isAccessTokenRevoked } from "./token-revocation.js";
 
 export interface AuthenticatedUser {
     cognitoSub: string;
@@ -57,11 +55,9 @@ export async function authenticate(
             );
         }
 
-        const [revoked] = await db.select({ jti: revokedAccessTokens.jti })
-            .from(revokedAccessTokens)
-            .where(eq(revokedAccessTokens.jti, payload.jti))
-            .limit(1);
-        if (revoked) throw new AppError(401, "TOKEN_REVOKED", "Authentication token is no longer valid.");
+        if (await isAccessTokenRevoked(payload.jti)) {
+            throw new AppError(401, "TOKEN_REVOKED", "Authentication token is no longer valid.");
+        }
 
         // Authentication only: do not require a PostgreSQL user yet.
         req.user = { cognitoSub: payload.sub, jti: payload.jti, tokenExpiresAt: new Date(payload.exp * 1000) };
