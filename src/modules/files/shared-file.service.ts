@@ -74,7 +74,12 @@ async function authorizeSharedFileAccess(input: SharedFileInput) {
             .for("update")
             .limit(1);
 
-        if (!share || share.status !== "active") {
+        const finalOpenSession =
+            share?.status === "expired" &&
+            share.firstOpenedAt !== null &&
+            share.successfulOpenCount >= share.maxAccessCount;
+
+        if (!share || (share.status !== "active" && !finalOpenSession)) {
             throw new AppError(
                 410,
                 "SHARE_UNAVAILABLE",
