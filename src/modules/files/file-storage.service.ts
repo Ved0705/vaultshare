@@ -10,7 +10,7 @@ const STORAGE_DIRECTORY = path.resolve(env.STORAGE_PATH, "files");
 export async function storeEncryptedFile(
     encryptedContent: Buffer,
 ): Promise<string> {
-    await mkdir(STORAGE_DIRECTORY, { recursive: true });
+    await mkdir(STORAGE_DIRECTORY, { recursive: true, mode: 0o700 });
 
     const storageKey = randomBytes(32).toString("hex");
     const filePath = path.join(STORAGE_DIRECTORY, storageKey);
