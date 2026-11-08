@@ -213,6 +213,7 @@ export async function downloadSharedFileService(
         },
         {
             encryptedDek: vault.encryptedDek,
+            kekVersion: vault.kekVersion,
         },
     );
 
