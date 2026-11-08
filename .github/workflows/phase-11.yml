@@ -74,6 +74,9 @@ jobs:
       - name: Account deletion integration
         run: npm run account-deletion:test
 
+      - name: Audit history integration
+        run: npm run audit-history:test
+
       - name: Folder deletion integration
         run: npm run folder-deletion:test
 
