@@ -201,20 +201,18 @@ This includes:
 
 Logs should contain operational metadata sufficient for debugging without recording secret values.
 
-Production log-redaction behavior and negative tests for secret leakage must be verified before production deployment.
+The Pino logger redacts authorization and cookie headers, request URLs and share-code parameters, and common secret-bearing fields. Centralized request-error logging records error names and request methods rather than raw exception objects. Background workers use sanitized error metadata. Runtime negative tests proving that secrets never appear in logs are still required before production deployment.
 
 ## 11. Application-Level Security
 
-The Express application uses Helmet security headers and centralized error handling.
+The Express application uses Helmet security headers, enables HSTS in production, and applies a configured CORS origin allowlist. The default development origin is http://localhost:5173; production deployments must set CORS_ORIGINS to the exact trusted browser origins.
 
-Request payloads are validated using Zod at applicable route boundaries.
-
-File uploads use Multer and application-controlled storage paths.
+A global API rate limiter is applied to /api/v1. Request payloads are validated using Zod at applicable route boundaries. File uploads use Multer and application-controlled storage paths.
 
 These controls reduce common input and application exposure risks but do not replace:
-- Comprehensive rate limiting.
-- Abuse detection.
-- Security monitoring.
+- Per-identity and endpoint-specific abuse controls.
+- Security monitoring and alerting.
+- Automated negative tests for log and response leakage.
 - Dependency vulnerability management.
 - Production infrastructure hardening.
 
@@ -238,14 +236,14 @@ These controls reduce common input and application exposure risks but do not rep
 
 The following areas must not be treated as complete merely because the core encryption and lifecycle tests pass:
 
-- Comprehensive API and upload/download rate limiting.
+- Per-identity and endpoint-specific rate limiting for sensitive operations, including upload/download and passphrase workflows.
 - Security audit logging and audit-event retention.
 - KEK rotation and operational key recovery.
 - Production backup retention and deletion guarantees.
 - Cleanup-job monitoring and failed-job recovery procedures.
 - Production notification security and delivery controls.
 - Automated security scanning and dependency monitoring.
-- Negative tests proving secrets are absent from logs and API responses.
+- Runtime negative tests proving secrets are absent from logs and API responses.
 - Production deployment hardening and incident-response procedures.
 
 These areas remain part of the wider security and PRD compliance audit.
