@@ -5,6 +5,7 @@ import {
   Plus, Search, ShieldCheck, ShieldEllipsis, X, Eye, FileText, Upload, Download, Trash2, Share2, Save, Copy, BookOpen,
 } from "lucide-react";
 import { api, type AuditEvent, type Folder as VaultFolder, type Vault } from "./api";
+import ShareManagement from "./ShareManagement";
 import { confirmSignUp, getSession, signIn, signOut, signUp } from "./auth";
 
 type View = "vaults" | "folders" | "activity" | "reader";
@@ -245,6 +246,7 @@ function VaultDetailModal({ vault, folders, onClose, onChanged }: { vault: Vault
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showShare, setShowShare] = useState(false);
+  const [sharesRefreshKey, setSharesRefreshKey] = useState(0);
   const [accessRequests, setAccessRequests] = useState<import("./api").OwnerAccessRequest[]>([]);
   const [writeRequests, setWriteRequests] = useState<import("./api").OwnerWriteRequest[]>([]);
   const [selectedProposal, setSelectedProposal] = useState<import("./api").WriteRequestDetail | null>(null);
@@ -340,6 +342,7 @@ function VaultDetailModal({ vault, folders, onClose, onChanged }: { vault: Vault
           {files.length === 0 ? <p className="muted-note">No files attached to this vault.</p> : files.map(file => <div className="file-row" key={file.id}><span><FileText size={16} /> {file.originalName}</span><div><button className="icon-button" title="Download" disabled={busy} onClick={() => void download(file)}><Download size={15} /></button><button className="icon-button danger-icon" title="Delete file" disabled={busy} onClick={() => void removeFile(file.id)}><Trash2 size={15} /></button></div></div>)}
         </section>
 
+        <ShareManagement vaultId={vault.id} refreshKey={sharesRefreshKey} />
         <section className="detail-section approval-section">
           <div className="section-heading-inline"><h3>Access requests <span className="queue-count">{accessRequests.filter(r => r.status === "PENDING").length}</span></h3><span className="muted-note">Approval records the request decision; create a share separately to grant access.</span></div>
           {accessRequests.length === 0 ? <p className="muted-note">No access requests for this vault.</p> : accessRequests.map(request => <div className="approval-row" key={request.id}>
@@ -359,7 +362,7 @@ function VaultDetailModal({ vault, folders, onClose, onChanged }: { vault: Vault
         <div className="detail-footer"><span>Status: <strong>{detail.status}</strong> · Expiry policy: <strong>{detail.expiryPolicy}</strong></span><span>Overall TTL: {ttlLabel(detail.overallTtlSeconds)}</span></div>
       </>}
     </div>
-    {showShare && <ShareVaultModal vault={vault} onClose={() => setShowShare(false)} onCreated={() => { setShowShare(false); setNotice("Share created. Copy the share code and passphrase now; the passphrase is not retrievable later."); }} />}
+    {showShare && <ShareVaultModal vault={vault} onClose={() => setShowShare(false)} onCreated={() => { setShowShare(false); setSharesRefreshKey((value) => value + 1); setNotice("Share created. Copy the share code and passphrase now; the passphrase is not retrievable later."); }} />}
   </div>;
 }
 
