@@ -4,6 +4,9 @@ import { z } from "zod";
 const envSchema = z.object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    CORS_ORIGINS: z.string().default("http://localhost:5173")
+        .transform((value) => value.split(",").map((origin) => origin.trim()).filter(Boolean))
+        .refine((origins) => origins.length > 0, "At least one CORS origin must be configured"),
     COGNITO_USERINFO_URL: z.string().url(),
 
     DATABASE_URL: z.string().url(),
