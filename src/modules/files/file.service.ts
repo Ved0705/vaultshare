@@ -60,7 +60,6 @@ export async function uploadFileService(input: UploadFileInput) {
                 .select({
                     id: vaults.id,
                     encryptedDek: vaults.encryptedDek,
-                kekVersion: vaults.kekVersion,
                     kekVersion: vaults.kekVersion,
                     status: vaults.status,
                     expiresAt: vaults.expiresAt,
@@ -144,6 +143,7 @@ export async function downloadFileService(input: {
             vault: {
                 id: vaults.id,
                 encryptedDek: vaults.encryptedDek,
+                kekVersion: vaults.kekVersion,
                 status: vaults.status,
                 expiresAt: vaults.expiresAt,
                 expiryPolicy: vaults.expiryPolicy,
