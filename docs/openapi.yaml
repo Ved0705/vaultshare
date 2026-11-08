@@ -59,7 +59,6 @@ paths:
       description: Starts the retryable account-deletion workflow, including application data destruction, Cognito identity deletion, and tombstone finalization.
       responses:
         '200': { $ref: '#/components/responses/Success' }
-        '202': { description: Deletion accepted or pending, depending on workflow state. }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /api/v1/audit-events:
@@ -575,7 +574,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 150 }
         description: { type: string, maxLength: 500 }
         content: { type: string, minLength: 1, maxLength: 900000 }
-        overallTtlSeconds: { type: integer, minimum: 1 }
+        overallTtlSeconds: { type: integer, minimum: 1, maximum: 2147483647 }
         expiryPolicy: { type: string, enum: [DESTROY, REVOKE_ACCESS], default: DESTROY }
         folderId: { type: [string, 'null'], format: uuid }
     ShareCreate:
