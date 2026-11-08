@@ -273,6 +273,21 @@ The following targeted tests have been reported passing during development:
 
 These are development integration tests, not a substitute for a full penetration test or independent security review.
 
+### 14.1 Latest local validation run
+
+The following checks were run locally after the versioned-KEK changes and reported passing:
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS |
+| `npm run encryption:test` | PASS, including KEK v1-to-v2 rewrap verification |
+| `npm run storage:test` | PASS |
+
+The database migration for KEK version columns was applied successfully. The `npm run kek:rotate` dry run completed successfully and reported zero vault rows and zero WRITE-request rows requiring rotation. No `--apply` operation was run because the dry-run found no rows to change. Keep both KEK versions available until the database contents and recovery requirements justify retiring an older key.
+
+These results verify the reported local checks only. They do not mark the remaining runtime CORS/HSTS, rate-limit behavior, or log-leakage negative tests as complete.
+
 ## 15. Account Deletion
 
 Account deletion is implemented as a retryable lifecycle workflow.
