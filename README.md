@@ -215,6 +215,8 @@ npm run lifecycle:test
 npm run file-cleanup:test
 npm run write-race:test
 npm run share-isolation:test
+npx tsx tests/share-access.integration-test.ts
+npm run account-deletion:test
 ```
 
 Some integration tests require a configured local PostgreSQL database and environment variables.
@@ -223,9 +225,9 @@ Some integration tests require a configured local PostgreSQL database and enviro
 
 VaultShare is under active development.
 
-The repository contains backend implementations for its core encryption, authentication, sharing, vault lifecycle, file-storage, and write-request workflows.
+The repository contains backend implementations for its core encryption, authentication, sharing, vault lifecycle, file-storage, write-request, and account-deletion workflows.
 
-Not all requirements are complete or production-ready. Features such as comprehensive audit logging, account deletion, folder management, notification workflows, renewal and access-count requests, general rate limiting, OpenAPI documentation, and production backup and recovery guarantees remain separate work items.
+Not all requirements are complete or production-ready. Remaining work includes comprehensive audit logging, folder management, notification workflows, renewal and access-count requests, general rate limiting, OpenAPI documentation, and production backup and recovery guarantees.
 
 ## Documentation
 
