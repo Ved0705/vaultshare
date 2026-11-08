@@ -270,7 +270,7 @@ function VaultDetailModal({ vault, folders, onClose, onChanged }: { vault: Vault
     setReviewBusyId(requestId); setError(""); setNotice("");
     try {
       await api.reviewAccessRequest(vault.id, requestId, decision, reviewMessage.trim() || undefined);
-      setReviewMessage(""); setNotice(`Access request ${decision.toLowerCase()}ed.`); await refresh();
+      setReviewMessage(""); setNotice(decision === "APPROVE" ? "Access request approved. Create a separate share for this reader to grant actual vault access." : "Access request rejected."); await refresh();
     } catch (err) { setError(readableError(err)); } finally { setReviewBusyId(""); }
   }
 
@@ -339,7 +339,7 @@ function VaultDetailModal({ vault, folders, onClose, onChanged }: { vault: Vault
         </section>
 
         <section className="detail-section approval-section">
-          <div className="section-heading-inline"><h3>Access requests <span className="queue-count">{accessRequests.filter(r => r.status === "PENDING").length}</span></h3><span className="muted-note">READ access requests</span></div>
+          <div className="section-heading-inline"><h3>Access requests <span className="queue-count">{accessRequests.filter(r => r.status === "PENDING").length}</span></h3><span className="muted-note">Approval records the request decision; create a share separately to grant access.</span></div>
           {accessRequests.length === 0 ? <p className="muted-note">No access requests for this vault.</p> : accessRequests.map(request => <div className="approval-row" key={request.id}>
             <div className="approval-main"><strong>{request.requesterEmail}</strong><span>{request.message || "No message provided"}</span><small>{formatDate(request.requestedAt)} · {request.status}</small></div>
             {request.status === "PENDING" && <div className="approval-actions"><button className="secondary-button" disabled={!!reviewBusyId} onClick={() => void reviewAccess(request.id, "REJECT")}>Reject</button><button className="primary-button" disabled={!!reviewBusyId} onClick={() => void reviewAccess(request.id, "APPROVE")}>Approve</button></div>}
