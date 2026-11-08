@@ -7,6 +7,7 @@ import { users } from "../../db/schema/users.js";
 import { vaults } from "../../db/schema/vaults.js";
 import { shares } from "../../db/schema/shares.js";
 import { shareCredentials } from "../../db/schema/share-credentials.js";
+import { notificationOutbox } from "../../db/schema/notification-outbox.js";
 
 import { AppError } from "../../shared/app-error.js";
 import { generateShareId } from "./share-id.js";
@@ -77,7 +78,7 @@ export async function createShareService(input: CreateShareInput) {
             .where(eq(users.id, input.readerId))
             .limit(1);
 
-        if (!reader || !reader.emailVerified) {
+        if (!reader || !reader.emailVerified || reader.status !== "ACTIVE") {
             throw new AppError(
                 404,
                 "READER_NOT_FOUND",
@@ -209,6 +210,12 @@ export async function createShareService(input: CreateShareInput) {
                 shareId: share.id,
                 passphraseHash,
             });
+
+        // Queue a metadata-only email in the same transaction as the share.
+        await tx.insert(notificationOutbox).values({
+            recipientUserId: reader.id,
+            eventType: "SHARE_CREATED",
+        });
 
         // 8. Return safe metadata only.
         return {

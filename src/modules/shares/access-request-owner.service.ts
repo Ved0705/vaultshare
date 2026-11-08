@@ -5,6 +5,7 @@ import { db } from "../../db/client.js";
 import { accessRequests } from "../../db/schema/access-requests.js";
 import { users } from "../../db/schema/users.js";
 import { vaults } from "../../db/schema/vaults.js";
+import { notificationOutbox } from "../../db/schema/notification-outbox.js";
 import { AppError } from "../../shared/app-error.js";
 
 export async function listAccessRequestsService(
@@ -69,6 +70,7 @@ export async function reviewAccessRequestService(
         const [request] = await tx
             .select({
                 id: accessRequests.id,
+                requesterId: accessRequests.requesterId,
                 status: accessRequests.status,
             })
             .from(accessRequests)
@@ -115,6 +117,11 @@ export async function reviewAccessRequestService(
                 reviewedAt: accessRequests.reviewedAt,
                 responseMessage: accessRequests.responseMessage,
             });
+
+        await tx.insert(notificationOutbox).values({
+            recipientUserId: request.requesterId,
+            eventType: "ACCESS_REQUEST_REVIEWED",
+        });
 
         return updated;
     });

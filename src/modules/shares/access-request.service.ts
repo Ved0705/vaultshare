@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { accessRequests } from "../../db/schema/access-requests.js";
 import { shares } from "../../db/schema/shares.js";
+import { notificationOutbox } from "../../db/schema/notification-outbox.js";
 import { vaults } from "../../db/schema/vaults.js";
 import { AppError } from "../../shared/app-error.js";
 
@@ -86,6 +87,11 @@ export async function createAccessRequestService(
                     status: accessRequests.status,
                     requestedAt: accessRequests.requestedAt,
                 });
+
+            await tx.insert(notificationOutbox).values({
+                recipientUserId: vault.ownerId,
+                eventType: "ACCESS_REQUEST_CREATED",
+            });
 
             return request;
         });
