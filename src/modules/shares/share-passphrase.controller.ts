@@ -12,6 +12,8 @@ export async function generateSharePassphraseController(req: Request, res: Respo
         const parsed = paramsSchema.safeParse(req.params);
         if (!parsed.success) throw new AppError(400, "INVALID_VAULT_ID", "Invalid vault ID.");
         const result = await generateSharePassphraseService(parsed.data.id, getAuthenticatedUserId(req));
+        res.setHeader("Cache-Control", "no-store, max-age=0");
+        res.setHeader("Pragma", "no-cache");
         res.status(200).json({ success: true, data: result });
     } catch (error) {
         next(error);
