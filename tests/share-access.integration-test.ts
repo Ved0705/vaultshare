@@ -11,6 +11,8 @@ import { passphraseAttempts } from "../src/db/schema/passphrase-attempts.js";
 
 import { createShareService } from "../src/modules/shares/share.service.js";
 import { openShareService } from "../src/modules/shares/share-access.service.js";
+import { extendShareAccessService } from "../src/modules/shares/share-extension.service.js";
+import { updateVaultService } from "../src/modules/vaults/vault.service.js";
 
 const ownerId = randomUUID();
 const readerIds: string[] = [];
@@ -294,6 +296,108 @@ async function run() {
             );
 
             console.log("PASS: expired post-open shares reject access");
+        }
+
+        // 6. Owners can grant additional opens after count exhaustion,
+        // but cannot renew after the reader's post-open TTL has expired.
+        {
+            const fixture = await createFixture({ maxAccessCount: 1 });
+
+            await openShareService({
+                shareCode: fixture.shareCode,
+                readerId: fixture.readerId,
+                passphrase: fixture.passphrase,
+            });
+
+            const renewed = await extendShareAccessService({
+                vaultId: fixture.vaultId,
+                shareId: fixture.shareId,
+                ownerId,
+                additionalAccesses: 2,
+            });
+
+            assert.equal(renewed.status, "active");
+            assert.equal(renewed.maxAccessCount, 3);
+
+            const secondOpen = await openShareService({
+                shareCode: fixture.shareCode,
+                readerId: fixture.readerId,
+                passphrase: fixture.passphrase,
+            });
+            assert.equal(secondOpen.successfulOpenCount, 2);
+
+            console.log("PASS: owner can extend an exhausted access count");
+        }
+
+        // 7. A reader cannot regain access by receiving a new share after
+        // their post-open TTL has expired.
+        {
+            const fixture = await createFixture({
+                maxAccessCount: 5,
+                postOpenTtlSeconds: 600,
+            });
+
+            await openShareService({
+                shareCode: fixture.shareCode,
+                readerId: fixture.readerId,
+                passphrase: fixture.passphrase,
+            });
+
+            await db
+                .update(shares)
+                .set({
+                    status: "expired",
+                    postOpenExpiresAt: new Date(Date.now() - 1000),
+                    updatedAt: new Date(),
+                })
+                .where(eq(shares.id, fixture.shareId));
+
+            await assert.rejects(
+                createShareService({
+                    vaultId: fixture.vaultId,
+                    ownerId,
+                    readerId: fixture.readerId,
+                    permissions: ["READ"],
+                    maxAccessCount: 5,
+                    postOpenTtlSeconds: 600,
+                    passphrase: fixture.passphrase,
+                }),
+                (error: unknown) => {
+                    assert.equal((error as { statusCode?: number }).statusCode, 410);
+                    assert.equal((error as { code?: string }).code, "READER_ACCESS_PERMANENTLY_EXPIRED");
+                    return true;
+                },
+            );
+
+            console.log("PASS: expired reader cannot regain access through re-sharing");
+        }
+
+        // 8. Vault metadata is editable before first open and immutable after.
+        {
+            const fixture = await createFixture();
+
+            await updateVaultService(fixture.vaultId, ownerId, {
+                name: "Updated before first open",
+            });
+
+            await openShareService({
+                shareCode: fixture.shareCode,
+                readerId: fixture.readerId,
+                passphrase: fixture.passphrase,
+            });
+
+            await assert.rejects(
+                updateVaultService(fixture.vaultId, ownerId, {
+                    name: "Must not be applied",
+                }),
+                (error: unknown) => {
+                    assert.equal((error as { statusCode?: number }).statusCode, 409);
+                    assert.equal((error as { code?: string }).code, "VAULT_IMMUTABLE");
+                    return true;
+                },
+            );
+
+            console.log("PASS: vault metadata becomes immutable after first reader open");
         }
 
         console.log("\nAll share-access integration tests passed.");
