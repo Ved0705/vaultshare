@@ -245,13 +245,18 @@ function VaultDetailModal({ vault, folders, onClose, onChanged }: { vault: Vault
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showShare, setShowShare] = useState(false);
+  const [accessRequests, setAccessRequests] = useState<import("./api").OwnerAccessRequest[]>([]);
+  const [writeRequests, setWriteRequests] = useState<import("./api").OwnerWriteRequest[]>([]);
+  const [selectedProposal, setSelectedProposal] = useState<import("./api").WriteRequestDetail | null>(null);
+  const [reviewMessage, setReviewMessage] = useState("");
+  const [reviewBusyId, setReviewBusyId] = useState("");
 
   const refresh = useCallback(async () => {
     setError("");
     try {
-      const [vaultDetail, fileData] = await Promise.all([api.getVault(vault.id), api.listFiles(vault.id)]);
+      const [vaultDetail, fileData, accessData, writeData] = await Promise.all([api.getVault(vault.id), api.listFiles(vault.id), api.listOwnerAccessRequests(vault.id), api.listOwnerWriteRequests(vault.id)]);
       setDetail(vaultDetail);
-      setFiles(fileData.files ?? []);
+      setFiles(fileData.files ?? []);\n      setAccessRequests(accessData.requests ?? []);\n      setWriteRequests(writeData.requests ?? []);
       setName(vaultDetail.name);
       setDescription(vaultDetail.description ?? "");
       setFolderId(vaultDetail.folderId ?? "");
@@ -259,6 +264,32 @@ function VaultDetailModal({ vault, folders, onClose, onChanged }: { vault: Vault
   }, [vault.id]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+
+  async function reviewAccess(requestId: string, decision: "APPROVE" | "REJECT") {
+    setReviewBusyId(requestId); setError(""); setNotice("");
+    try {
+      await api.reviewAccessRequest(vault.id, requestId, decision, reviewMessage.trim() || undefined);
+      setReviewMessage(""); setNotice(`Access request ${decision.toLowerCase()}ed.`); await refresh();
+    } catch (err) { setError(readableError(err)); } finally { setReviewBusyId(""); }
+  }
+
+  async function openProposal(requestId: string) {
+    setReviewBusyId(requestId); setError("");
+    try { setSelectedProposal(await api.getOwnerWriteRequest(vault.id, requestId)); }
+    catch (err) { setError(readableError(err)); } finally { setReviewBusyId(""); }
+  }
+
+  async function reviewProposal(decision: "APPROVE" | "REJECT") {
+    if (!selectedProposal) return;
+    setReviewBusyId(selectedProposal.id); setError(""); setNotice("");
+    try {
+      const result = await api.reviewWriteRequest(vault.id, selectedProposal.id, decision);
+      setSelectedProposal(null);
+      setNotice(result.derivedVault ? `Proposal approved. A derived copy was created: ${result.derivedVault.name}.` : "Write proposal rejected.");
+      await refresh(); await onChanged();
+    } catch (err) { setError(readableError(err)); } finally { setReviewBusyId(""); }
+  }
 
   async function saveMetadata(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
@@ -305,6 +336,23 @@ function VaultDetailModal({ vault, folders, onClose, onChanged }: { vault: Vault
         <section className="detail-section"><h3><FileText size={16} /> Protected content</h3><pre className="vault-content-preview">{detail.content}</pre><p className="muted-note">Content is shown only after the authenticated owner requests this vault from the API. Content editing is not exposed because the current backend has no owner content-update endpoint.</p></section>
         <section className="detail-section"><div className="section-heading-inline"><h3>Encrypted files</h3><label className="secondary-button upload-control"><Upload size={15} /> Upload file<input type="file" onChange={upload} disabled={busy} /></label></div>
           {files.length === 0 ? <p className="muted-note">No files attached to this vault.</p> : files.map(file => <div className="file-row" key={file.id}><span><FileText size={16} /> {file.originalName}</span><div><button className="icon-button" title="Download" disabled={busy} onClick={() => void download(file)}><Download size={15} /></button><button className="icon-button danger-icon" title="Delete file" disabled={busy} onClick={() => void removeFile(file.id)}><Trash2 size={15} /></button></div></div>)}
+        </section>
+
+        <section className="detail-section approval-section">
+          <div className="section-heading-inline"><h3>Access requests <span className="queue-count">{accessRequests.filter(r => r.status === "PENDING").length}</span></h3><span className="muted-note">READ access requests</span></div>
+          {accessRequests.length === 0 ? <p className="muted-note">No access requests for this vault.</p> : accessRequests.map(request => <div className="approval-row" key={request.id}>
+            <div className="approval-main"><strong>{request.requesterEmail}</strong><span>{request.message || "No message provided"}</span><small>{formatDate(request.requestedAt)} · {request.status}</small></div>
+            {request.status === "PENDING" && <div className="approval-actions"><button className="secondary-button" disabled={!!reviewBusyId} onClick={() => void reviewAccess(request.id, "REJECT")}>Reject</button><button className="primary-button" disabled={!!reviewBusyId} onClick={() => void reviewAccess(request.id, "APPROVE")}>Approve</button></div>}
+          </div>)}
+          {accessRequests.some(r => r.status === "PENDING") && <label className="review-message-label">Optional response to requester<input value={reviewMessage} maxLength={500} onChange={e => setReviewMessage(e.target.value)} placeholder="Add a short response" /></label>}
+        </section>
+        <section className="detail-section approval-section">
+          <div className="section-heading-inline"><h3>WRITE proposals <span className="queue-count">{writeRequests.filter(r => r.status === "PENDING").length}</span></h3><span className="muted-note">Owner approval required</span></div>
+          {writeRequests.length === 0 ? <p className="muted-note">No WRITE proposals for this vault.</p> : writeRequests.map(request => <div className="approval-row" key={request.id}>
+            <div className="approval-main"><strong>Reader {request.requestedBy.slice(0, 8)}…</strong><span>Submitted {formatDate(request.requestedAt)}</span><small>{request.status}</small></div>
+            <div className="approval-actions">{request.status === "PENDING" ? <button className="secondary-button" disabled={!!reviewBusyId} onClick={() => void openProposal(request.id)}>Review proposal</button> : <span className="muted-note">Reviewed</span>}</div>
+          </div>)}
+          {selectedProposal && <div className="proposal-review"><div className="section-heading-inline"><h3>Proposed replacement content</h3><button className="icon-button" onClick={() => setSelectedProposal(null)}><X size={16}/></button></div><pre className="vault-content-preview">{selectedProposal.proposedContent}</pre><p className="muted-note">Approving creates an independent derived copy for the reader. The original vault remains unchanged.</p><div className="approval-actions"><button className="secondary-button" disabled={!!reviewBusyId} onClick={() => void reviewProposal("REJECT")}>Reject proposal</button><button className="primary-button" disabled={!!reviewBusyId} onClick={() => void reviewProposal("APPROVE")}>Approve & create derived copy</button></div></div>}
         </section>
         <div className="detail-footer"><span>Status: <strong>{detail.status}</strong> · Expiry policy: <strong>{detail.expiryPolicy}</strong></span><span>Overall TTL: {ttlLabel(detail.overallTtlSeconds)}</span></div>
       </>}
