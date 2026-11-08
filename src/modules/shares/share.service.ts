@@ -85,6 +85,36 @@ export async function createShareService(input: CreateShareInput) {
             );
         }
 
+        // A reader whose post-open TTL has expired must never regain
+        // access to this vault, even if the owner attempts to create a new share.
+        const [priorShare] = await tx
+            .select({
+                status: shares.status,
+                firstOpenedAt: shares.firstOpenedAt,
+                postOpenExpiresAt: shares.postOpenExpiresAt,
+            })
+            .from(shares)
+            .where(
+                and(
+                    eq(shares.vaultId, vault.id),
+                    eq(shares.readerId, reader.id),
+                ),
+            )
+            .orderBy(shares.createdAt)
+            .limit(1);
+
+        if (
+            priorShare?.firstOpenedAt &&
+            priorShare.postOpenExpiresAt &&
+            priorShare.postOpenExpiresAt <= now
+        ) {
+            throw new AppError(
+                410,
+                "READER_ACCESS_PERMANENTLY_EXPIRED",
+                "This reader's access to the vault has permanently expired.",
+            );
+        }
+
         // 3. Prevent duplicate active shares.
         const [existingShare] = await tx
             .select({ id: shares.id })
