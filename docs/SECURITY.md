@@ -318,3 +318,14 @@ Run `npm run security:middleware:test`. The test starts the application in produ
 VaultShare has implemented core authentication, authorization, encryption, share isolation, lifecycle handling, and asynchronous cleanup mechanisms.
 
 The project remains under development. Production readiness depends on completing the remaining security, operational, monitoring, backup, and deployment controls described above.
+
+
+## 18. Audit history and notification privacy
+
+The request audit middleware stores a normalized route (UUIDs and share codes are replaced with route placeholders), HTTP method, status code, actor identifiers when authenticated, and a resource UUID where available. It does not store request bodies or query strings. Authenticated users may retrieve their own paginated activity through `GET /api/v1/audit-events`; the endpoint does not expose other users' events. Persistence is asynchronous after the response finishes, so this application audit trail is operational evidence rather than a guaranteed, tamper-proof compliance ledger.
+
+Notification events are written to a transactional outbox for share creation/revocation, access-request creation/review, and WRITE-request creation/review. Message content is generic and excludes vault contents, names, filenames, share codes, passphrases, and request messages/responses. The worker sends only to active users with verified email addresses, retries transient delivery failures up to five attempts, and runs separately from the API. Mailpit verifies local SMTP handoff only; production provider delivery and monitoring remain release gates.
+
+## 19. Configurable upload limit
+
+The single-file upload limit is configured through `MAX_FILE_SIZE_BYTES` (default 10 MiB, maximum 100 MiB). The upload middleware accepts arbitrary file types and validates the filename length; it does not implement a per-user or per-vault aggregate storage quota. A product-approved quota policy and enforcement remain outstanding.
