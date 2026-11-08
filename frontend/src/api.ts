@@ -21,6 +21,8 @@ export type AuditEvent = { id: string; action: string; method: string; route: st
 export type VaultDetail = Vault & { content: string };
 export type VaultFile = { id: string; originalName: string; mimeType?: string; sizeBytes?: number; createdAt?: string };
 export type ShareResult = { id: string; shareCode: string; vaultId: string; readerId: string; permissions: ("READ" | "WRITE")[]; status: string; maxAccessCount: number; successfulOpenCount: number; postOpenTtlSeconds: number | null; sharedAt: string };
+export type OpenedShare = { shareId: string; shareCode: string; permissions: ("READ" | "WRITE")[]; successfulOpenCount: number; remainingAccesses: number; content?: string; canRequestWrite: boolean; postOpenExpiresAt: string | null; vaultExpiresAt: string | null };
+export type SharedVaultFile = { id: string; originalName: string; mimeType?: string; sizeBytes?: number; createdAt?: string };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const session = await getSession();
@@ -66,6 +68,26 @@ export const api = {
   },
   generateSharePassphrase: (vaultId: string) =>
     request<{ passphrase: string; entropyBits: number }>(`/vaults/${vaultId}/shares/passphrase`, { method: "POST" }),
+  openShare: (shareCode: string, passphrase: string) =>
+    request<OpenedShare>(`/shares/${encodeURIComponent(shareCode)}/open`, { method: "POST", body: JSON.stringify({ passphrase }) }),
+  createWriteRequest: (shareCode: string, input: { proposedContent: string; passphrase: string }) =>
+    request<{ id: string; status: string; requestedAt: string }>(`/shares/${encodeURIComponent(shareCode)}/write-requests`, { method: "POST", body: JSON.stringify(input) }),
+  listSharedFiles: (shareCode: string, passphrase: string) =>
+    request<{ files: SharedVaultFile[] }>(`/shares/${encodeURIComponent(shareCode)}/files/list`, { method: "POST", body: JSON.stringify({ passphrase }) }),
+  downloadSharedFile: async (shareCode: string, fileId: string, passphrase: string) => {
+    const session = await getSession();
+    const token = session?.getAccessToken().getJwtToken();
+    if (!token) throw new Error("Your session has expired. Please sign in again.");
+    const response = await fetch(`${API_BASE}/shares/${encodeURIComponent(shareCode)}/files/${encodeURIComponent(fileId)}/download`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ passphrase }),
+    });
+    if (!response.ok) { const payload = await response.json().catch(() => null); throw new Error(payload?.error?.message || `Download failed (${response.status})`); }
+    return response.blob();
+  },
+  requestVaultAccess: (vaultId: string, message?: string) =>
+    request<{ request: { id: string; status: string; requestedAt: string } }>(`/access-requests/vaults/${vaultId}`, { method: "POST", body: JSON.stringify({ message }) }),
+  cancelAccessRequest: (requestId: string) =>
+    request<{ request: { id: string; status: string; cancelledAt: string } }>(`/access-requests/${requestId}/cancel`, { method: "PATCH" }),
   createShare: (vaultId: string, input: { readerId: string; permissions: ("READ" | "WRITE")[]; maxAccessCount: number; postOpenTtlSeconds: number | null; passphrase: string }) =>
     request<ShareResult>(`/vaults/${vaultId}/shares`, { method: "POST", body: JSON.stringify(input) }),
   listVaults: () => request<Vault[]>("/vaults?limit=100&offset=0"),
