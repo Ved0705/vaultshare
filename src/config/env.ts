@@ -16,6 +16,7 @@ const envSchema = z.object({
     COGNITO_USERINFO_URL: z.string().url(),
     DATABASE_URL: z.string().url(),
     STORAGE_PATH: z.string().min(1),
+    MAX_FILE_SIZE_BYTES: z.coerce.number().int().min(1).max(104857600).default(10485760),
     MAIL_HOST: z.string().min(1),
     MAIL_PORT: z.coerce.number().int().min(1).max(65535),
     MAIL_FROM: z.string().email().or(z.string().min(1)),
