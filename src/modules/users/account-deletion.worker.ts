@@ -24,12 +24,10 @@ export async function processPendingAccountDeletions(): Promise<number> {
             processed++;
         } catch (error) {
             // Never log tokens, emails, or account contents.
-            console.error(
-                `Account deletion retry failed for user ${user.id}:`,
-                error instanceof Error
-                    ? error.message
-                    : "Unknown error",
-            );
+            console.error("Account deletion retry failed.", {
+                userId: user.id,
+                errorName: error instanceof Error ? error.name : "UnknownError",
+            });
         }
     }
 
@@ -43,12 +41,9 @@ async function startAccountDeletionWorker(): Promise<void> {
         try {
             await processPendingAccountDeletions();
         } catch (error) {
-            console.error(
-                "Account deletion worker error:",
-                error instanceof Error
-                    ? error.message
-                    : "Unknown error",
-            );
+            console.error("Account deletion worker error.", {
+                errorName: error instanceof Error ? error.name : "UnknownError",
+            });
         }
 
         await new Promise((resolve) =>
