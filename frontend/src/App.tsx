@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Activity, ArrowDownToLine, ArrowLeft, ArrowRight, Archive, Check, ChevronDown,
-  CircleHelp, Clock3, Command, FilePlus2, Folder, FolderPlus, KeyRound, LayoutDashboard,
-  LoaderCircle, LockKeyhole, LogOut, MoreHorizontal, Plus, Search, ShieldCheck,
-  ShieldEllipsis, Sparkles, Trash2, X,
+  Activity, ArrowRight, Archive, Check, CircleHelp, Clock3, Folder, FolderPlus,
+  KeyRound, LayoutDashboard, LoaderCircle, LockKeyhole, LogOut, MoreHorizontal,
+  Plus, Search, ShieldCheck, ShieldEllipsis, X,
 } from "lucide-react";
 import { api, type AuditEvent, type Folder as VaultFolder, type Vault } from "./api";
 import { confirmSignUp, getSession, signIn, signOut, signUp } from "./auth";
@@ -52,7 +51,7 @@ export default function App() {
       ]);
       setVaults(Array.isArray(vaultData) ? vaultData : []);
       setFolders(folderData?.folders ?? []);
-      setEvents(Array.isArray(auditData) ? auditData : []);
+      setEvents(Array.isArray(auditData?.events) ? auditData.events : []);
       setUserEmail(me.email);
     } catch (err) {
       setError(readableError(err));
