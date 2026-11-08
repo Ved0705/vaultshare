@@ -1,0 +1,93 @@
+name: Phase 11 verification
+
+on:
+  push:
+    branches:
+      - phase-11-completion
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  phase-11:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: vaultshare
+          POSTGRES_PASSWORD: local_dev_password
+          POSTGRES_DB: vaultshare
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vaultshare -d vaultshare"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      mailpit:
+        image: axllent/mailpit:latest
+        ports:
+          - 1025:1025
+          - 8025:8025
+    env:
+      NODE_ENV: test
+      PORT: 3000
+      CORS_ORIGINS: http://localhost:5173
+      TRUST_PROXY_HOPS: 0
+      COGNITO_USERINFO_URL: https://example.test/userinfo
+      DATABASE_URL: postgres://vaultshare:local_dev_password@127.0.0.1:5432/vaultshare
+      STORAGE_PATH: ./private-storage-test
+      MAIL_HOST: 127.0.0.1
+      MAIL_PORT: 1025
+      MAIL_FROM: no-reply@example.test
+      COGNITO_REGION: ap-south-1
+      COGNITO_USER_POOL_ID: ap-south-1_example
+      COGNITO_CLIENT_ID: phase-11-test-client
+      VAULT_KEK_BASE64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      VAULT_KEK_V2_BASE64: ""
+      VAULT_KEK_CURRENT_VERSION: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply database migrations
+        run: npx drizzle-kit migrate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Account deletion integration
+        run: npm run account-deletion:test
+
+      - name: Folder deletion integration
+        run: npm run folder-deletion:test
+
+      - name: Vault lifecycle and lineage integration
+        run: npm run lifecycle:test
+
+      - name: Share revocation isolation integration
+        run: npm run share-isolation:test
+
+      - name: WRITE approval and revocation race integration
+        run: npm run write-race:test
+
+      - name: Security regression integration
+        run: npm run security:integration:test
+
+      - name: SMTP integration
+        run: npm run email:test
