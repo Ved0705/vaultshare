@@ -2,7 +2,7 @@ import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import { pinoHttp } from "pino-http";
-
+import rateLimit from "express-rate-limit";
 import { logger } from "./config/logger.js";
 import { authenticate } from "./middleware/auth.middleware.js";
 import { notFoundHandler } from "./middleware/not-found.js";
@@ -35,7 +35,21 @@ app.get("/health", (_req, res) => {
         },
     });
 });
+const apiRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 100,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: {
+        success: false,
+        error: {
+            code: "RATE_LIMITED",
+            message: "Too many requests. Please try again later.",
+        },
+    },
+});
 
+app.use("/api/v1", apiRateLimiter);
 app.get("/api/v1/auth/me", authenticate, getCurrentUser);
 
 app.delete(
