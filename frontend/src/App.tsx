@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowRight, Archive, Check, CircleHelp, Clock3, Folder, FolderPlus,
   KeyRound, LayoutDashboard, LoaderCircle, LockKeyhole, LogOut, MoreHorizontal,
-  Plus, Search, ShieldCheck, ShieldEllipsis, X,
+  Plus, Search, ShieldCheck, ShieldEllipsis, X, Eye, FileText, Upload, Download, Trash2, Share2, Save, Copy,
 } from "lucide-react";
 import { api, type AuditEvent, type Folder as VaultFolder, type Vault } from "./api";
 import { confirmSignUp, getSession, signIn, signOut, signUp } from "./auth";
@@ -40,6 +40,7 @@ export default function App() {
   const [showCreate, setShowCreate] = useState(false);
   const [showFolder, setShowFolder] = useState(false);
   const [busyId, setBusyId] = useState("");
+  const [selectedVault, setSelectedVault] = useState<Vault | null>(null);
   const [toast, setToast] = useState("");
 
   const loadData = useCallback(async () => {
@@ -142,7 +143,7 @@ export default function App() {
               <div className="stat-card"><div className="stat-icon amber"><Clock3 size={17} /></div><span className="stat-label">Expiring soon</span><strong>{expiringCount.toString().padStart(2, "0")}</strong><span className="stat-foot">Within the next 24 hours</span></div>
             </section>
             <section className="section-heading"><div><h2>Your vaults</h2><p>Only you can see what lives here.</p></div><div className="toolbar"><label className="search-box"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search vaults..." /></label><button className="secondary-button" onClick={() => setShowFolder(true)}><FolderPlus size={16} /> New folder</button></div></section>
-            {loading ? <div className="loading-state"><LoaderCircle className="spin" size={22} /> Loading your vaults…</div> : filteredVaults.length === 0 ? <div className="empty-state"><div className="empty-art"><LockKeyhole size={25} /></div><h3>{query ? "No vaults found" : "Your first vault starts here"}</h3><p>{query ? "Try a different search term." : "Create a private space for a note, credential, or file you need to share securely."}</p>{!query && <button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Create your first vault</button>}</div> : <div className="vault-grid">{filteredVaults.map((vault) => <article className="vault-card" key={vault.id}><div className="vault-card-top"><div className="vault-file-icon"><KeyRound size={19} /></div><div className={`status-pill ${vault.status.toLowerCase()}`}><span />{vault.status.replaceAll("_", " ")}</div><div className="card-menu"><button className="icon-button" title="Vault actions" onClick={() => handleVaultAction(vault, "revoke")} disabled={busyId === vault.id}><MoreHorizontal size={18} /></button></div></div><h3>{vault.name}</h3><p className="vault-description">{vault.description || "Private encrypted content"}</p><div className="vault-meta"><span><Clock3 size={14} /> {ttlLabel(vault.overallTtlSeconds)}</span><span><Folder size={14} /> {folders.find((folder) => folder.id === vault.folderId)?.name || "Unfiled"}</span></div><div className="vault-card-footer"><span>Created {formatDate(vault.createdAt)}</span><button className="text-action" disabled={busyId === vault.id} onClick={() => handleVaultAction(vault, "delete")}>Destroy <ArrowRight size={14} /></button></div></article>)}</div>}
+            {loading ? <div className="loading-state"><LoaderCircle className="spin" size={22} /> Loading your vaults…</div> : filteredVaults.length === 0 ? <div className="empty-state"><div className="empty-art"><LockKeyhole size={25} /></div><h3>{query ? "No vaults found" : "Your first vault starts here"}</h3><p>{query ? "Try a different search term." : "Create a private space for a note, credential, or file you need to share securely."}</p>{!query && <button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Create your first vault</button>}</div> : <div className="vault-grid">{filteredVaults.map((vault) => <article className="vault-card" key={vault.id}><div className="vault-card-top"><div className="vault-file-icon"><KeyRound size={19} /></div><div className={`status-pill ${vault.status.toLowerCase()}`}><span />{vault.status.replaceAll("_", " ")}</div><div className="card-menu"><button className="icon-button" title="Vault actions" onClick={() => handleVaultAction(vault, "revoke")} disabled={busyId === vault.id}><MoreHorizontal size={18} /></button></div></div><h3>{vault.name}</h3><p className="vault-description">{vault.description || "Private encrypted content"}</p><div className="vault-meta"><span><Clock3 size={14} /> {ttlLabel(vault.overallTtlSeconds)}</span><span><Folder size={14} /> {folders.find((folder) => folder.id === vault.folderId)?.name || "Unfiled"}</span></div><div className="vault-card-footer"><span>Created {formatDate(vault.createdAt)}</span><div className="vault-card-actions"><button className="text-action" onClick={() => setSelectedVault(vault)}><Eye size={14} /> Open</button><button className="text-action" disabled={busyId === vault.id} onClick={() => handleVaultAction(vault, "delete")}>Destroy <ArrowRight size={14} /></button></div></div></article>)}</div>}
           </>}
 
           {view === "folders" && <><section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> ORGANIZE YOUR SPACE</div><h1>Folders, <em>in order.</em></h1><p className="page-subtitle">Group your vaults without changing their access or expiry settings.</p></div><button className="primary-button" onClick={() => setShowFolder(true)}><Plus size={17} /> New folder</button></section><div className="folder-grid">{folders.map((folder) => <div className="folder-card" key={folder.id}><div className="folder-illustration"><Folder size={23} /></div><div><h3>{folder.name}</h3><p>{vaults.filter((vault) => vault.folderId === folder.id).length} vaults</p></div></div>)}</div>{folders.length === 0 && <div className="empty-state"><div className="empty-art"><Folder size={25} /></div><h3>No folders yet</h3><p>Create folders to keep your vaults organized.</p><button className="primary-button" onClick={() => setShowFolder(true)}><Plus size={17} /> Create a folder</button></div>}</>}
@@ -154,8 +155,117 @@ export default function App() {
 
       {showCreate && <CreateVaultModal folders={folders} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); setToast("Your new vault is ready."); await loadData(); }} />}
       {showFolder && <CreateFolderModal onClose={() => setShowFolder(false)} onCreated={async () => { setShowFolder(false); setToast("Folder created."); await loadData(); }} />}
+      {selectedVault && <VaultDetailModal vault={selectedVault} folders={folders} onClose={() => setSelectedVault(null)} onChanged={async () => { await loadData(); }} />}
     </div>
   );
+}
+
+
+function VaultDetailModal({ vault, folders, onClose, onChanged }: { vault: Vault; folders: VaultFolder[]; onClose: () => void; onChanged: () => Promise<void> }) {
+  const [detail, setDetail] = useState<import("./api").VaultDetail | null>(null);
+  const [files, setFiles] = useState<import("./api").VaultFile[]>([]);
+  const [name, setName] = useState(vault.name);
+  const [description, setDescription] = useState(vault.description ?? "");
+  const [folderId, setFolderId] = useState(vault.folderId ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [showShare, setShowShare] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setError("");
+    try {
+      const [vaultDetail, fileData] = await Promise.all([api.getVault(vault.id), api.listFiles(vault.id)]);
+      setDetail(vaultDetail);
+      setFiles(fileData.files ?? []);
+      setName(vaultDetail.name);
+      setDescription(vaultDetail.description ?? "");
+      setFolderId(vaultDetail.folderId ?? "");
+    } catch (err) { setError(readableError(err)); }
+  }, [vault.id]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  async function saveMetadata(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    try {
+      await api.updateVault(vault.id, { name, description: description || null, folderId: folderId || null });
+      setNotice("Vault details updated."); await refresh(); await onChanged();
+    } catch (err) { setError(readableError(err)); } finally { setBusy(false); }
+  }
+
+  async function upload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]; if (!file) return;
+    setBusy(true); setError(""); setNotice("");
+    try { await api.uploadFile(vault.id, file); setNotice("File encrypted and uploaded."); await refresh(); }
+    catch (err) { setError(readableError(err)); }
+    finally { setBusy(false); event.target.value = ""; }
+  }
+
+  async function download(file: import("./api").VaultFile) {
+    setBusy(true); setError("");
+    try {
+      const blob = await api.downloadFile(vault.id, file.id);
+      const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
+      anchor.href = url; anchor.download = file.originalName || "download"; anchor.click(); URL.revokeObjectURL(url);
+    } catch (err) { setError(readableError(err)); } finally { setBusy(false); }
+  }
+
+  async function removeFile(fileId: string) {
+    if (!window.confirm("Permanently delete this encrypted file?")) return;
+    setBusy(true); setError("");
+    try { await api.deleteFile(vault.id, fileId); await refresh(); setNotice("File deleted."); }
+    catch (err) { setError(readableError(err)); } finally { setBusy(false); }
+  }
+
+  return <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="modal-card vault-detail-modal">
+      <div className="modal-header"><div><div className="eyebrow"><span className="eyebrow-dot" /> VAULT WORKSPACE</div><h2>{vault.name}</h2><p>Owner controls, encrypted content and attached files.</p></div><button className="icon-button" onClick={onClose}><X size={19} /></button></div>
+      {error && <div className="form-error">{error}</div>}{notice && <div className="form-notice">{notice}</div>}
+      {!detail ? <div className="loading-state">Loading vault…</div> : <>
+        <form className="modal-form" onSubmit={saveMetadata}>
+          <div className="form-row"><label>Vault name<input value={name} maxLength={150} required onChange={e => setName(e.target.value)} /></label><label>Folder<select value={folderId} onChange={e => setFolderId(e.target.value)}><option value="">Unfiled</option>{folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label></div>
+          <label>Description<input value={description} maxLength={500} onChange={e => setDescription(e.target.value)} /></label>
+          <div className="modal-actions"><button className="secondary-button" type="button" onClick={() => setShowShare(true)}><Share2 size={15} /> Share vault</button><button className="primary-button" disabled={busy || !name.trim()}><Save size={15} /> Save details</button></div>
+        </form>
+        <section className="detail-section"><h3><FileText size={16} /> Protected content</h3><pre className="vault-content-preview">{detail.content}</pre><p className="muted-note">Content is shown only after the authenticated owner requests this vault from the API. Content editing is not exposed because the current backend has no owner content-update endpoint.</p></section>
+        <section className="detail-section"><div className="section-heading-inline"><h3>Encrypted files</h3><label className="secondary-button upload-control"><Upload size={15} /> Upload file<input type="file" onChange={upload} disabled={busy} /></label></div>
+          {files.length === 0 ? <p className="muted-note">No files attached to this vault.</p> : files.map(file => <div className="file-row" key={file.id}><span><FileText size={16} /> {file.originalName}</span><div><button className="icon-button" title="Download" disabled={busy} onClick={() => void download(file)}><Download size={15} /></button><button className="icon-button danger-icon" title="Delete file" disabled={busy} onClick={() => void removeFile(file.id)}><Trash2 size={15} /></button></div></div>)}
+        </section>
+        <div className="detail-footer"><span>Status: <strong>{detail.status}</strong> · Expiry policy: <strong>{detail.expiryPolicy}</strong></span><span>Overall TTL: {ttlLabel(detail.overallTtlSeconds)}</span></div>
+      </>}
+    </div>
+    {showShare && <ShareVaultModal vault={vault} onClose={() => setShowShare(false)} onCreated={() => { setShowShare(false); setNotice("Share created. Copy the share code and passphrase now; the passphrase is not retrievable later."); }} />}
+  </div>;
+}
+
+function ShareVaultModal({ vault, onClose, onCreated }: { vault: Vault; onClose: () => void; onCreated: () => void }) {
+  const [readerId, setReaderId] = useState("");
+  const [permissions, setPermissions] = useState<("READ" | "WRITE")[]>(["READ"]);
+  const [maxAccessCount, setMaxAccessCount] = useState("5");
+  const [postOpenTtlSeconds, setPostOpenTtlSeconds] = useState("86400");
+  const [passphrase, setPassphrase] = useState("");
+  const [shareCode, setShareCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function generate() { setBusy(true); setError(""); try { const result = await api.generateSharePassphrase(vault.id); setPassphrase(result.passphrase); } catch (err) { setError(readableError(err)); } finally { setBusy(false); } }
+  async function submit(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setError("");
+    try {
+      const result = await api.createShare(vault.id, { readerId: readerId.trim(), permissions, maxAccessCount: Number(maxAccessCount), postOpenTtlSeconds: postOpenTtlSeconds ? Number(postOpenTtlSeconds) : null, passphrase });
+      setShareCode(result.shareCode); onCreated();
+    } catch (err) { setError(readableError(err)); } finally { setBusy(false); }
+  }
+  function togglePermission(permission: "READ" | "WRITE") { setPermissions(current => current.includes(permission) ? current.filter(p => p !== permission) : [...current, permission]); }
+  return <div className="modal-backdrop nested-modal" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><div className="modal-card small-modal"><div className="modal-header"><div><div className="eyebrow">CONTROLLED ACCESS</div><h2>Share {vault.name}</h2><p>Only share with a verified VaultShare account.</p></div><button className="icon-button" onClick={onClose}><X size={19} /></button></div>
+    {shareCode ? <div className="share-created"><p>Share created successfully.</p><label>Share code</label><div className="copy-value">{shareCode}<button className="icon-button" onClick={() => void navigator.clipboard.writeText(shareCode)}><Copy size={15} /></button></div><p className="muted-note">Send the share code and passphrase to the reader through a separate secure channel. VaultShare does not expose the passphrase again.</p><button className="primary-button" onClick={onClose}>Done</button></div> : <form className="modal-form" onSubmit={submit}>
+      <label>Reader account ID (UUID)<input required value={readerId} onChange={e => setReaderId(e.target.value)} placeholder="Verified reader's account ID" /></label>
+      <div className="permission-options"><label><input type="checkbox" checked={permissions.includes("READ")} onChange={() => togglePermission("READ")} /> READ</label><label><input type="checkbox" checked={permissions.includes("WRITE")} onChange={() => togglePermission("WRITE")} /> WRITE</label></div>
+      <div className="form-row"><label>Maximum opens<input type="number" min="1" max="1000" required value={maxAccessCount} onChange={e => setMaxAccessCount(e.target.value)} /></label><label>Post-open TTL<select value={postOpenTtlSeconds} onChange={e => setPostOpenTtlSeconds(e.target.value)}><option value="3600">1 hour</option><option value="21600">6 hours</option><option value="86400">24 hours</option><option value="604800">7 days</option><option value="">No per-reader TTL</option></select></label></div>
+      <label>Share passphrase<input required minLength={12} maxLength={128} value={passphrase} onChange={e => setPassphrase(e.target.value)} placeholder="Generate or enter a strong passphrase" /></label><button type="button" className="secondary-button" onClick={() => void generate()} disabled={busy}>Generate secure passphrase</button>
+      {error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={busy || !readerId.trim() || !passphrase || permissions.length === 0}>{busy ? "Creating…" : "Create share"}</button></div>
+    </form>}
+  </div></div>;
 }
 
 function AuthScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
