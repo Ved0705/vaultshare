@@ -25,7 +25,7 @@ function cognitoUser(email: string) {
 export function getSession(): Promise<CognitoUserSession | null> {
   const current = pool?.getCurrentUser();
   if (!current) return Promise.resolve(null);
-  return new Promise((resolve) => current.getSession((error, session) => {
+  return new Promise((resolve) => current.getSession((error: Error | null, session: CognitoUserSession | null) => {
     if (error || !session?.isValid()) resolve(null);
     else resolve(session);
   }));
