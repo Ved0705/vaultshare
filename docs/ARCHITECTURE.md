@@ -317,7 +317,7 @@ This document describes the current backend architecture and implemented lifecyc
 
 It does not imply that every planned module is complete or that the application is production-ready.
 
-Account deletion, owner-scoped folder CRUD, global and endpoint-specific rate limits, owner-controlled share extension, audit capture/history, and notification delivery are implemented. Reader-submitted renewal/access-count request and owner-approval workflows remain unimplemented. In-app/web notification inbox functionality is also not implemented; the current notification worker sends email only. Aggregate storage quotas are not configured.
+Account deletion, owner-scoped folder CRUD, global and endpoint-specific rate limits, owner-controlled share extension, audit capture/history, and notification delivery are implemented. Reader-submitted renewal/access-count request and owner-approval workflows remain unimplemented. In-app/web notification inbox functionality is also not implemented; the current notification worker sends email only. Per-vault file quotas are enforced at 100 active files and 100 MiB total active file bytes; a per-user aggregate quota is not configured.
 
 Physical cleanup jobs can reach a terminal `FAILED` state and require operational handling.
 

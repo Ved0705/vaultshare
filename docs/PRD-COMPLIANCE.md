@@ -97,13 +97,13 @@ This is an engineering compliance audit, not a security certification or a claim
 | Support arbitrary file types | Upload filter validates filename and does not restrict MIME type | Implemented |
 | Configurable maximum file size | MAX_FILE_SIZE_BYTES, default 10 MiB and hard maximum 100 MiB (added in this branch) | Implemented in this branch; CI pending |
 | One file per upload request | Multer single-file upload | Implemented |
-| Per-user or per-vault aggregate storage quota | No aggregate quota schema or enforcement found | Gap / product policy required |
+| Per-user or per-vault aggregate storage quota | Per-vault service limits: 100 active files and 100 MiB total active file bytes; no per-user aggregate quota | Partial: per-vault limits implemented; per-user aggregate quota requires product policy |
 | Global API rate limit | 100 requests per 15 minutes at /api/v1 | Implemented |
 | Additional passphrase-attempt rate limit | 5 per 15 minutes by identity and IP, plus database-backed attempt tracking | Implemented |
 | Additional file-operation rate limit | 30 per 15 minutes by identity and IP | Implemented |
 | Distributed rate-limit store for multiple API replicas | Current express-rate-limit default memory store is process-local | Partial / production scaling gate |
 
-A storage quota needs an approved definition (per account, per vault, treatment of derived copies, whether deleted-but-not-yet-cleaned blobs count, and maximum total bytes). No quota values are invented in this audit.
+Per-vault file-count and byte limits are enforced in the upload service. A per-user aggregate quota is not implemented; its scope and treatment of derived copies and pending cleanup need an approved product policy.
 
 ## 8. Notifications and audit history
 

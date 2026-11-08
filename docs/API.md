@@ -328,7 +328,7 @@ Form field:
 
 - `file`: the file to upload.
 
-The current upload middleware accepts one file per request. The maximum size is configured by MAX_FILE_SIZE_BYTES (default 10 MiB; hard maximum 100 MiB). Filenames must be present and no longer than 255 characters. MIME types are not allowlisted. No per-user or per-vault aggregate storage quota is currently enforced.
+The current upload middleware accepts one file per request. The maximum size is configured by MAX_FILE_SIZE_BYTES (default 10 MiB; hard maximum 100 MiB). Filenames must be present and no longer than 255 characters. MIME types are not allowlisted. The service enforces a per-vault limit of 100 active files and 100 MiB total active file bytes. It does not enforce a per-user aggregate storage quota.
 
 ### List vault files
 
