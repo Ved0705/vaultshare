@@ -6,7 +6,7 @@ VaultShare uses a modular layered-monolith architecture built with Node.js, Type
 
 The application is organized into business modules, infrastructure services, middleware, authorization, and database access. Business logic is separated from infrastructure concerns while the backend runs as a single application.
 
-Background processes handle vault expiration and deferred storage cleanup independently of the HTTP server.
+Three background processes handle vault expiration, deferred storage cleanup, and transactional email delivery independently of the HTTP server.
 
 ## 2. Technology Stack
 
@@ -63,10 +63,10 @@ Background processes handle vault expiration and deferred storage cleanup indepe
                     Background Processes
                            |
               +------------+------------+
-              |                         |
-              v                         v
-        Vault Expiry              Cleanup Worker
-         Scheduler               File and Vault Jobs
+              |                         |                         |
+              v                         v                         v
+        Vault Expiry              Cleanup Worker            Notification Worker
+         Scheduler               File and Vault Jobs        Email Outbox
 ```
 
 ## 4. Source Code Organization
@@ -275,16 +275,17 @@ When a source vault is revoked or expires, pending WRITE requests across its lin
 
 ## 12. Background Processes
 
-VaultShare uses two independently started background processes.
+VaultShare uses three independently started background processes.
 
 | Process | Responsibility |
 |---|---|
 | Expiry scheduler | Finds and processes expired vaults |
 | Cleanup worker | Processes pending file and destroyed-vault cleanup jobs |
+| Notification worker | Delivers metadata-only emails from the transactional notification outbox |
 
 The expiry scheduler invokes vault lifecycle processing. The cleanup worker handles deferred physical storage deletion.
 
-Both processes run separately from the HTTP server.
+All three processes run separately from the HTTP server. Start the notification worker with `npm run notifications:worker`; it is not automatically started by the API.
 
 ## 13. Local Infrastructure
 
@@ -306,7 +307,7 @@ The application server and background processes run separately using the Node.js
 - Fresh encryption keys for derived vaults.
 - Explicit vault, share, and lineage lifecycle management.
 - Transactional handling and row-level locking for sensitive state transitions.
-- Background processing for expiration and physical cleanup.
+- Background processing for expiration, physical cleanup, and notification delivery.
 - Private storage for encrypted file blobs.
 - Environment-based configuration.
 
@@ -316,8 +317,16 @@ This document describes the current backend architecture and implemented lifecyc
 
 It does not imply that every planned module is complete or that the application is production-ready.
 
-Account deletion, owner-scoped folder deletion, general rate limiting, owner-controlled share renewal, and additional-access-count extensions have implementation paths. Reader-submitted renewal/access-count request and owner-approval workflows are not implemented. Folder creation/listing workflows and comprehensive audit logging also remain separate product work.
+Account deletion, owner-scoped folder CRUD, global and endpoint-specific rate limits, owner-controlled share extension, audit capture/history, and notification delivery are implemented. Reader-submitted renewal/access-count request and owner-approval workflows remain unimplemented. In-app/web notification inbox functionality is also not implemented; the current notification worker sends email only. Aggregate storage quotas are not configured.
 
 Physical cleanup jobs can reach a terminal `FAILED` state and require operational handling.
 
 Production deployment, managed secrets, HTTPS, monitoring, backup policy, and recovery procedures are not established by the local development architecture alone.
+
+### Folder and audit modules
+
+Folder endpoints support owner-scoped creation, listing, renaming, and deletion. Folder deletion detaches contained vaults without deleting their payloads. Request audit middleware records normalized API route, method, actor, resource identifier where available, and HTTP status without storing query strings or request bodies. Authenticated users can retrieve their own paginated activity history. Audit persistence is asynchronous and must not be treated as a tamper-proof compliance ledger.
+
+### Notification outbox
+
+Sharing, revocation, access-request, and WRITE-request events enqueue metadata-only notification records transactionally with their business changes. The separate notification worker sends only to active users with verified email addresses. Local SMTP integration is tested with Mailpit; production SMTP delivery, deliverability, and monitoring remain deployment concerns.

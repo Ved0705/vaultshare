@@ -61,6 +61,7 @@ The application expects the following configuration:
 | `COGNITO_CLIENT_ID` | Cognito application client identifier |
 | `DATABASE_URL` | PostgreSQL connection string |
 | `STORAGE_PATH` | Local private file storage directory |
+| `MAX_FILE_SIZE_BYTES` | Maximum bytes accepted for one uploaded file (default 10 MiB; maximum 100 MiB) |
 | `MAIL_HOST` | SMTP server hostname |
 | `MAIL_PORT` | SMTP server port |
 | `MAIL_FROM` | Sender email address |
@@ -78,6 +79,7 @@ CORS_ORIGINS=http://localhost:5173
 DATABASE_URL=postgresql://vaultshare:local_dev_password@localhost:5433/vaultshare
 
 STORAGE_PATH=./private-storage
+MAX_FILE_SIZE_BYTES=10485760
 
 MAIL_HOST=localhost
 MAIL_PORT=1025
@@ -187,7 +189,7 @@ Expected response structure:
 
 ## 9. Background Processes
 
-VaultShare has two independent background processes. Run each in a separate terminal.
+VaultShare has three independent background processes. Run each in a separate terminal.
 
 ### Vault expiry scheduler
 
@@ -208,6 +210,14 @@ The cleanup worker processes pending file and destroyed-vault cleanup jobs.
 It checks for available work periodically, recovers stale processing claims, and retries failed jobs using exponential backoff.
 
 Jobs that exceed their configured maximum attempts are marked `FAILED`. These require operational investigation; do not assume physical deletion completed merely because a cleanup job was queued.
+
+### Metadata-only notification worker
+
+```powershell
+npm run notifications:worker
+```
+
+This worker polls the transactional notification outbox and sends generic metadata-only email notifications through the configured SMTP server. It is not started by the API. Run it in a separate terminal. Failed delivery is retried up to five attempts; terminal failures require operational inspection.
 
 ## 10. Email Testing
 
@@ -231,7 +241,7 @@ Inspect received messages:
 http://localhost:8025
 ```
 
-This test verifies configured SMTP integration. It does not establish that all application notification workflows are implemented.
+This command sends a test email through the configured SMTP transport. Application notification workflows are separately exercised by `npm run notifications:test` and `npm run access-request-notifications:test`. These tests use Mailpit; they do not prove production-provider deliverability.
 
 ## 11. Available Development Commands
 
@@ -249,6 +259,13 @@ This test verifies configured SMTP integration. It does not establish that all a
 | `npm run file-cleanup:test` | Run file cleanup integration tests |
 | `npm run write-race:test` | Run write/revocation race tests |
 | `npm run share-isolation:test` | Run share revocation isolation tests |
+| `npm run folder-deletion:test` | Run folder CRUD, ownership, and deletion integration tests |
+| `npm run share-passphrase:test` | Run generated share passphrase tests |
+| `npm run audit-history:test` | Run actor-scoped audit history tests |
+| `npm run security:integration:test` | Run security regression tests |
+| `npm run security:middleware:test` | Run security middleware tests |
+| `npm run notifications:test` | Run notification outbox integration tests |
+| `npm run access-request-notifications:test` | Run access-request notification tests |
 | `npm run email:test` | Test email integration |
 | `npm run expiry:scheduler` | Start vault expiry scheduler |
 | `npm run cleanup:worker` | Start cleanup worker |
@@ -297,6 +314,14 @@ npm run lifecycle:test
 npm run file-cleanup:test
 npm run write-race:test
 npm run share-isolation:test
+npm run account-deletion:test
+npm run folder-deletion:test
+npm run share-passphrase:test
+npm run audit-history:test
+npm run security:integration:test
+npm run security:middleware:test
+npm run notifications:test
+npm run access-request-notifications:test
 ```
 
 Check whitespace and patch formatting:

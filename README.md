@@ -8,7 +8,7 @@ VaultShare is a backend application for sharing encrypted content and files with
 
 - **Encrypted vaults:** AES-256-GCM encryption with a per-vault Data Encryption Key (DEK).
 - **Envelope encryption:** DEKs are protected using a Key Encryption Key (KEK).
-- **Controlled sharing:** Share vaults with specific registered users.
+- **Controlled sharing:** Share vaults with specific registered users using custom or generated high-entropy passphrases.
 - **Granular permissions:** READ and WRITE permissions are assigned per vault.
 - **Passphrase protection:** Shared access uses Argon2id-hashed passphrases.
 - **Access limits:** Configure the maximum number of successful opens.
@@ -19,7 +19,9 @@ VaultShare is a backend application for sharing encrypted content and files with
 - **Write requests:** WRITE recipients can submit proposed changes for owner review.
 - **Derived vaults:** Approved proposals create independent vaults with fresh encryption contexts.
 - **Encrypted file sharing:** Store encrypted file blobs in private local storage.
-- **Background cleanup:** Process deferred file and destroyed-vault cleanup jobs with retries.
+- **Background processing:** Expiry, file cleanup, and metadata-only email notification workers run independently with retry handling.
+- **Folders:** Create, list, rename, and delete owner-scoped folders; deleting a folder detaches rather than destroys its vaults.
+- **Audit history:** Sanitized API activity is recorded and authenticated users can retrieve their own paginated activity history.
 
 ## Technology Stack
 
@@ -56,7 +58,7 @@ Major business areas include:
 - File management and storage
 - Expiry scheduling and cleanup processing
 
-PostgreSQL is the authoritative persistent data store. Background processes run independently of the HTTP server.
+PostgreSQL is the authoritative persistent data store. Background processes (expiry scheduler, cleanup worker, and notification worker) run independently of the HTTP server.
 
 See [System Architecture](docs/ARCHITECTURE.md) for the architecture and lifecycle details.
 
@@ -150,6 +152,14 @@ npm run cleanup:worker
 
 The expiry scheduler checks for expired vaults periodically. The cleanup worker processes pending storage cleanup jobs, retries failures, and marks jobs that exceed their configured retry limit as `FAILED`.
 
+Start metadata-only email notification delivery:
+
+```powershell
+npm run notifications:worker
+```
+
+The notification worker consumes the transactional outbox and retries delivery. It requires a working SMTP server; Mailpit is used locally. It is not started automatically by the API.
+
 ## API Overview
 
 Base URL:
@@ -175,11 +185,11 @@ http://localhost:3000/api/v1
 | POST | `/access-requests/vaults/:vaultId` | Request vault access |
 | PATCH | `/access-requests/:requestId/cancel` | Cancel an access request |
 
-Additional endpoints support access-request reviews, WRITE request reviews, file operations, and shared-file access.
+Additional endpoints support folder CRUD, generated share passphrases, owner access-request reviews, WRITE request reviews, file operations, shared-file access, and personal audit history.
 
-Authenticated endpoints require a valid Cognito access token and a provisioned VaultShare user.
+Authenticated endpoints require a valid Cognito access token and, where specified, a provisioned VaultShare user.
 
-See [API Reference](docs/API.md) for the documented endpoints and request behavior.
+See [API Reference](docs/API.md), the [OpenAPI 3.1 specification](docs/openapi.yaml), and [PRD compliance matrix](docs/PRD-COMPLIANCE.md).
 
 ## Security
 
@@ -217,6 +227,13 @@ npm run write-race:test
 npm run share-isolation:test
 npx tsx tests/share-access.integration-test.ts
 npm run account-deletion:test
+npm run folder-deletion:test
+npm run share-passphrase:test
+npm run audit-history:test
+npm run security:middleware:test
+npm run security:integration:test
+npm run notifications:test
+npm run access-request-notifications:test
 ```
 
 Some integration tests require a configured local PostgreSQL database and environment variables.
@@ -225,16 +242,18 @@ Some integration tests require a configured local PostgreSQL database and enviro
 
 VaultShare is under active development.
 
-The repository contains backend implementations for its core encryption, authentication, sharing, vault lifecycle, file-storage, write-request, and account-deletion workflows.
-
-Not all requirements are complete or production-ready. Remaining work includes comprehensive audit logging, folder management, notification workflows, renewal and access-count requests, general rate limiting, OpenAPI documentation, and production backup and recovery guarantees.
+The backend implements core authentication, encrypted vaults/files, sharing, folders, access and WRITE requests, lifecycle/lineage, account deletion, audit capture/history, and metadata-only notifications. The project is not production-ready: see the PRD compliance matrix for implemented, partial, and blocked acceptance criteria.
 
 ## Documentation
 
 - [System Architecture](docs/ARCHITECTURE.md)
 - [API Reference](docs/API.md)
+- [OpenAPI 3.1 Specification](docs/openapi.yaml)
+- [PRD Compliance Matrix](docs/PRD-COMPLIANCE.md)
 - [Security](docs/SECURITY.md)
 - [Setup & Operations](docs/SETUP.md)
+- [Backup & Recovery](docs/BACKUP-RECOVERY.md)
+- [Release Readiness Checklist](docs/RELEASE-CHECKLIST.md)
 
 ## License
 

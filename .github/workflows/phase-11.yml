@@ -65,6 +65,9 @@ jobs:
       - name: Apply database migrations
         run: npx drizzle-kit migrate
 
+      - name: Validate OpenAPI YAML
+        run: ruby -e 'require "yaml"; YAML.load_file("docs/openapi.yaml")'
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -74,11 +77,17 @@ jobs:
       - name: Account deletion integration
         run: npm run account-deletion:test
 
+      - name: Audit history integration
+        run: npm run audit-history:test
+
       - name: Folder deletion integration
         run: npm run folder-deletion:test
 
       - name: Vault lifecycle and lineage integration
         run: npm run lifecycle:test
+
+      - name: Share passphrase generation integration
+        run: npm run share-passphrase:test
 
       - name: Share access and notification integration
         run: npm run share-access:test
