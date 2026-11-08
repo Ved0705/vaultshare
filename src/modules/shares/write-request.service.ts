@@ -6,6 +6,7 @@ import { db } from "../../db/client.js";
 import { shares } from "../../db/schema/shares.js";
 import { vaults } from "../../db/schema/vaults.js";
 import { writeRequests } from "../../db/schema/write-requests.js";
+import { notificationOutbox } from "../../db/schema/notification-outbox.js";
 
 import { encryptVaultContent } from "../../infrastructure/encryption/encryption.service.js";
 import { AppError } from "../../shared/app-error.js";
@@ -172,6 +173,11 @@ export async function createWriteRequestService(
                 status: writeRequests.status,
                 requestedAt: writeRequests.requestedAt,
             });
+
+        await tx.insert(notificationOutbox).values({
+            recipientUserId: vault.ownerId,
+            eventType: "WRITE_REQUEST_CREATED",
+        });
 
         return {
             kind: "success" as const,

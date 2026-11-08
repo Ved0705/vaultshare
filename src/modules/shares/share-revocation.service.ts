@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { shares } from "../../db/schema/shares.js";
 import { vaults } from "../../db/schema/vaults.js";
+import { notificationOutbox } from "../../db/schema/notification-outbox.js";
 import { AppError } from "../../shared/app-error.js";
 
 export async function revokeShareService(
@@ -42,6 +43,7 @@ export async function revokeShareService(
         const [share] = await tx
             .select({
                 id: shares.id,
+                readerId: shares.readerId,
                 status: shares.status,
             })
             .from(shares)
@@ -84,6 +86,13 @@ export async function revokeShareService(
                 status: shares.status,
                 revokedAt: shares.revokedAt,
             });
+
+        if (revokedShare) {
+            await tx.insert(notificationOutbox).values({
+                recipientUserId: share.readerId,
+                eventType: "SHARE_REVOKED",
+            });
+        }
 
         return revokedShare;
     });
@@ -135,7 +144,16 @@ export async function revokeAllSharesService(
                     eq(shares.status, "active"),
                 ),
             )
-            .returning({ id: shares.id });
+            .returning({ id: shares.id, readerId: shares.readerId });
+
+        if (revokedShares.length > 0) {
+            await tx.insert(notificationOutbox).values(
+                revokedShares.map((share) => ({
+                    recipientUserId: share.readerId,
+                    eventType: "SHARE_REVOKED" as const,
+                })),
+            );
+        }
 
         return {
             revokedCount: revokedShares.length,

@@ -7,6 +7,7 @@ import { writeRequests } from "../../db/schema/write-requests.js";
 import { vaults } from "../../db/schema/vaults.js";
 import { shares } from "../../db/schema/shares.js";
 import { vaultLineage } from "../../db/schema/vault-lineage.js";
+import { notificationOutbox } from "../../db/schema/notification-outbox.js";
 
 import {
     decryptVaultContent,
@@ -119,6 +120,11 @@ export async function reviewWriteRequestService(
                     reviewedAt: writeRequests.reviewedAt,
                 });
 
+            await tx.insert(notificationOutbox).values({
+                recipientUserId: request.requestedBy,
+                eventType: "WRITE_REQUEST_REVIEWED",
+            });
+
             return updated;
         }
 
@@ -219,6 +225,11 @@ export async function reviewWriteRequestService(
             derivedVaultId,
             writeRequestId: request.id,
             createdBy: input.ownerId,
+        });
+
+        await tx.insert(notificationOutbox).values({
+            recipientUserId: request.requestedBy,
+            eventType: "WRITE_REQUEST_REVIEWED",
         });
 
         return {
