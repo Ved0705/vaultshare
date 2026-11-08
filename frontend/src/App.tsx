@@ -256,7 +256,9 @@ function VaultDetailModal({ vault, folders, onClose, onChanged }: { vault: Vault
     try {
       const [vaultDetail, fileData, accessData, writeData] = await Promise.all([api.getVault(vault.id), api.listFiles(vault.id), api.listOwnerAccessRequests(vault.id), api.listOwnerWriteRequests(vault.id)]);
       setDetail(vaultDetail);
-      setFiles(fileData.files ?? []);\n      setAccessRequests(accessData.requests ?? []);\n      setWriteRequests(writeData.requests ?? []);
+      setFiles(fileData.files ?? []);
+      setAccessRequests(accessData.requests ?? []);
+      setWriteRequests(writeData.requests ?? []);
       setName(vaultDetail.name);
       setDescription(vaultDetail.description ?? "");
       setFolderId(vaultDetail.folderId ?? "");
