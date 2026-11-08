@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { env } from "../../config/env.js";
 
 import {
     encryptVaultContent,
     decryptVaultContent,
+    rewrapKekEncryptedDek,
 } from "./encryption.service.js";
 
 const vaultId = "vault-test-001";
@@ -59,5 +61,15 @@ assert.notEqual(
 );
 
 console.log("PASS: Unique DEK generation");
+
+// 6. Versioned KEK rewrapping preserves ciphertext and plaintext.
+if (env.VAULT_KEK_V2_BASE64) {
+    const rotatedDek = rewrapKekEncryptedDek(vaultId, encrypted.encryptedDek, 1, 2);
+    assert.equal(decryptVaultContent(vaultId, { ...encrypted, encryptedDek: rotatedDek, kekVersion: 2 }), content);
+    assert.throws(() => decryptVaultContent(vaultId, { ...encrypted, encryptedDek: rotatedDek, kekVersion: 1 }));
+    console.log("PASS: KEK v1-to-v2 rewrap and version enforcement");
+} else {
+    console.log("SKIP: KEK rotation test (VAULT_KEK_V2_BASE64 is not configured)");
+}
 
 console.log("\nAll encryption tests passed.");
