@@ -21,6 +21,20 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
 }
 
+function expiryLabel(value?: string | null) {
+  if (!value) return "No expiry set";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const remainingMs = date.getTime() - Date.now();
+  if (remainingMs <= 0) return `Expired · ${formatDate(value)}`;
+  const hours = Math.floor(remainingMs / 3600000);
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  const remainingMinutes = Math.max(1, Math.ceil((remainingMs % 3600000) / 60000));
+  const relative = days > 0 ? `${days}d ${remainingHours}h left` : hours > 0 ? `${hours}h ${remainingMinutes}m left` : `${remainingMinutes}m left`;
+  return `${formatDate(value)} · ${relative}`;
+}
+
 function ttlLabel(seconds: number) {
   if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))} min`;
   if (seconds < 86400) return `${Math.round(seconds / 3600)} hr`;
@@ -169,6 +183,7 @@ function ReaderWorkspace() {
   const [passphrase, setPassphrase] = useState("");
   const [opened, setOpened] = useState<import("./api").OpenedShare | null>(null);
   const [files, setFiles] = useState<import("./api").SharedVaultFile[]>([]);
+  const [filesLoaded, setFilesLoaded] = useState(false);
   const [proposedContent, setProposedContent] = useState("");
   const [accessVaultId, setAccessVaultId] = useState("");
   const [accessMessage, setAccessMessage] = useState("");
@@ -177,22 +192,42 @@ function ReaderWorkspace() {
   const [notice, setNotice] = useState("");
 
   async function open(event: React.FormEvent) {
-    event.preventDefault(); setBusy(true); setError(""); setNotice(""); setFiles([]); setOpened(null);
+    event.preventDefault(); setBusy(true); setError(""); setNotice(""); setFiles([]); setFilesLoaded(false); setOpened(null);
     try { const result = await api.openShare(shareCode.trim(), passphrase); setOpened(result); setNotice("Share opened. Your access limits and expiry are enforced by the server."); }
     catch (err) { setError(readableError(err)); }
     finally { setBusy(false); }
   }
   async function loadFiles() {
     setBusy(true); setError("");
-    try { const result = await api.listSharedFiles(shareCode.trim(), passphrase); setFiles(result.files ?? []); }
+    try { const result = await api.listSharedFiles(shareCode.trim(), passphrase); setFiles(result.files ?? []); setFilesLoaded(true); }
     catch (err) { setError(readableError(err)); }
     finally { setBusy(false); }
   }
   async function download(file: import("./api").SharedVaultFile) {
     setBusy(true); setError("");
-    try { const blob = await api.downloadSharedFile(shareCode.trim(), file.id, passphrase); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = file.originalName || "download"; anchor.click(); URL.revokeObjectURL(url); }
-    catch (err) { setError(readableError(err)); }
+    try {
+      const blob = await api.downloadSharedFile(shareCode.trim(), file.id, passphrase);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = file.originalName || "download";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) { setError(readableError(err)); }
     finally { setBusy(false); }
+  }
+
+  function closeShare() {
+    setOpened(null);
+    setFiles([]);
+    setFilesLoaded(false);
+    setProposedContent("");
+    setPassphrase("");
+    setShareCode("");
+    setNotice("Share view closed. The displayed content and entered credentials were cleared from this workspace.");
+    setError("");
   }
   async function submitWrite(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
@@ -226,11 +261,12 @@ function ReaderWorkspace() {
       </section>
     </div>
     {opened && <section className="reader-opened">
-      <div className="reader-opened-head"><div><div className="eyebrow"><span className="eyebrow-dot"/> VERIFIED SHARE</div><h2>Shared vault content</h2></div><span className="status-pill active"><span/> OPENED</span></div>
-      <div className="reader-stats"><div><span>Permissions</span><strong>{opened.permissions.join(" + ")}</strong></div><div><span>Successful opens</span><strong>{opened.successfulOpenCount}</strong></div><div><span>Remaining opens</span><strong>{opened.remainingAccesses}</strong></div><div><span>Reader expiry</span><strong>{formatDate(opened.postOpenExpiresAt)}</strong></div></div>
+      <div className="reader-opened-head"><div><div className="eyebrow"><span className="eyebrow-dot"/> VERIFIED SHARE</div><h2>Shared vault content</h2></div><div className="reader-session-actions"><span className="status-pill active"><span/> OPENED</span><button className="secondary-button" onClick={closeShare}>Close share</button></div></div>
+      <div className="reader-stats"><div><span>Permissions</span><strong>{opened.permissions.join(" + ")}</strong></div><div><span>Successful opens</span><strong>{opened.successfulOpenCount}</strong></div><div><span>Remaining opens</span><strong>{opened.remainingAccesses}</strong></div><div><span>Reader access ends</span><strong>{expiryLabel(opened.postOpenExpiresAt)}</strong></div><div><span>Vault overall expiry</span><strong>{expiryLabel(opened.vaultExpiresAt)}</strong></div></div>
       {opened.permissions.includes("READ") ? <><h3>Protected content</h3><pre className="vault-content-preview">{opened.content ?? "No readable content was returned."}</pre>
         <div className="section-heading-inline reader-files-heading"><h3>Shared files</h3><button className="secondary-button" onClick={() => void loadFiles()} disabled={busy}><FileText size={15}/> Load shared files</button></div>
         {files.map(file => <div className="file-row" key={file.id}><span><FileText size={16}/>{file.originalName}</span><button className="icon-button" title="Download shared file" disabled={busy} onClick={() => void download(file)}><Download size={15}/></button></div>)}
+        {filesLoaded && files.length === 0 && <p className="muted-note">No files are currently shared with you.</p>}
       </> : <p className="muted-note">This is a WRITE-only share. Original vault content is not disclosed to you.</p>}
       {opened.permissions.includes("WRITE") && <form className="modal-form write-proposal" onSubmit={submitWrite}><h3>Propose a change</h3><p className="muted-note">Your proposal is encrypted and sent to the owner for approval. It does not modify the original vault unless approved.</p><label>Proposed content<textarea required rows={6} maxLength={900000} value={proposedContent} onChange={e => setProposedContent(e.target.value)} placeholder="Enter the complete proposed replacement content…" /></label><button className="primary-button" disabled={busy || !proposedContent.trim()}>Submit for owner approval</button></form>}
     </section>}
