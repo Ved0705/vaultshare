@@ -64,6 +64,14 @@ export async function extendShareAccessService(input: ExtendShareInput) {
             );
         }
 
+        if (share.maxAccessCount + input.additionalAccesses > 1000) {
+            throw new AppError(
+                400,
+                "ACCESS_LIMIT_TOO_LARGE",
+                "The total access limit cannot exceed 1000.",
+            );
+        }
+
         const exhaustedByCount =
             share.status === "expired" &&
             share.successfulOpenCount >= share.maxAccessCount;
