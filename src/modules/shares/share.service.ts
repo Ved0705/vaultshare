@@ -1,6 +1,6 @@
 
 import argon2 from "argon2";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, isNotNull, lte } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import { users } from "../../db/schema/users.js";
@@ -87,27 +87,21 @@ export async function createShareService(input: CreateShareInput) {
 
         // A reader whose post-open TTL has expired must never regain
         // access to this vault, even if the owner attempts to create a new share.
-        const [priorShare] = await tx
-            .select({
-                status: shares.status,
-                firstOpenedAt: shares.firstOpenedAt,
-                postOpenExpiresAt: shares.postOpenExpiresAt,
-            })
+        const [priorExpiredShare] = await tx
+            .select({ id: shares.id })
             .from(shares)
             .where(
                 and(
                     eq(shares.vaultId, vault.id),
                     eq(shares.readerId, reader.id),
+                    isNotNull(shares.firstOpenedAt),
+                    isNotNull(shares.postOpenExpiresAt),
+                    lte(shares.postOpenExpiresAt, now),
                 ),
             )
-            .orderBy(shares.createdAt)
             .limit(1);
 
-        if (
-            priorShare?.firstOpenedAt &&
-            priorShare.postOpenExpiresAt &&
-            priorShare.postOpenExpiresAt <= now
-        ) {
+        if (priorExpiredShare) {
             throw new AppError(
                 410,
                 "READER_ACCESS_PERMANENTLY_EXPIRED",
