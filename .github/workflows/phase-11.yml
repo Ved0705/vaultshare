@@ -5,9 +5,11 @@ on:
     branches:
       - master
       - phase-11-completion
+      - frontend/v1-dashboard
   pull_request:
     branches:
       - master
+      - frontend/v1-dashboard
   workflow_dispatch:
 
 jobs:
