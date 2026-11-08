@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
+  // amazon-cognito-identity-js expects the Node-style global identifier in browsers.
+  define: { global: "globalThis" },
   plugins: [react()],
   server: { host: "0.0.0.0", port: 5173 },
 });
