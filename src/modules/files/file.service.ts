@@ -13,6 +13,7 @@ import {
     deleteStoredFile,
 } from "./file-storage.service.js";
 import { AppError } from "../../shared/app-error.js";
+import { env } from "../../config/env.js";
 
 function canOwnerAccessVault(vault: {
     status: string;
@@ -40,8 +41,8 @@ export async function uploadFileService(input: UploadFileInput) {
         throw new AppError(400, "EMPTY_FILE", "Uploaded file is empty.");
     }
 
-    if (input.file.size > 10 * 1024 * 1024) {
-        throw new AppError(413, "FILE_TOO_LARGE", "Maximum file size is 10 MB.");
+    if (input.file.size > env.MAX_FILE_SIZE_BYTES) {
+        throw new AppError(413, "FILE_TOO_LARGE", "Uploaded file exceeds the configured maximum file size.");
     }
 
     const fileId = randomUUID();
