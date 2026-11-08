@@ -45,7 +45,17 @@ Deletes the authenticated user's VaultShare account through the account-deletion
 | GET | `/health` | API health check | Public |
 | GET | `/api/v1/auth/me` | Retrieve current authenticated user | Required |
 
-## 5. Vault Management
+## 5. Folder Management
+
+Base path: `/api/v1/folders`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| DELETE | `/api/v1/folders/:id` | Delete a folder and move its vaults to the root |
+
+Folder deletion is owner-scoped and non-destructive. Vaults are detached from the folder; their encrypted content, files, shares, and lifecycle state are preserved.
+
+## 6. Vault Management
 
 Base path: `/api/v1/vaults`
 
@@ -107,7 +117,7 @@ Supports updating:
 - `description`
 - `folderId`
 
-At least one field must be provided.
+At least one field must be provided. Vault metadata and file contents become immutable after the first reader opens the vault.
 
 ### Revoke vault access
 
@@ -125,7 +135,7 @@ This operation is irreversible for the derived vaults.
 
 Permanently destroys the selected vault and its derived vaults. Encrypted payloads are cleared and physical file cleanup is queued for asynchronous processing.
 
-## 6. Share Management
+## 7. Share Management
 
 Base path: `/api/v1/vaults/:id/shares`
 
@@ -134,6 +144,7 @@ Base path: `/api/v1/vaults/:id/shares`
 | POST | `/api/v1/vaults/:id/shares` | Create a share |
 | PATCH | `/api/v1/vaults/:id/shares/:shareId/revoke` | Revoke an individual share |
 | PATCH | `/api/v1/vaults/:id/shares/revoke-all` | Revoke all shares for a vault |
+| PATCH | `/api/v1/vaults/:id/shares/:shareId/extend` | Extend remaining access count and/or post-open TTL |
 
 ### Create share
 
@@ -161,7 +172,24 @@ Validation:
 
 Individual share revocation affects the selected share and does not destroy the vault or its derived-vault lineage.
 
-## 7. Share Access
+### Extend share access
+
+`PATCH /api/v1/vaults/:id/shares/:shareId/extend`
+
+Request body:
+
+```json
+{
+  "additionalAccesses": 2,
+  "extendPostOpenBySeconds": 3600
+}
+```
+
+Both fields are optional; `additionalAccesses` defaults to 1. Extensions are owner-controlled and are allowed only while the vault and reader-specific post-open window remain valid. A share exhausted only by its access count can be reactivated by this operation. A reader whose post-open TTL has expired, or whose share was revoked, cannot be renewed. Any extended post-open expiry is capped by the vault's overall expiry.
+
+When a reader consumes the final permitted open, the share transitions to `expired`. That reader's already-open session can still access shared files until its post-open TTL or the vault's overall TTL expires; no further opens are allowed.
+
+## 8. Share Access
 
 Base path: `/api/v1/shares`
 
@@ -202,7 +230,7 @@ Validation:
 
 Write requests are reviewed by the vault owner. Approval creates a derived vault rather than directly overwriting the original.
 
-## 8. Access Requests
+## 9. Access Requests
 
 Base path: `/api/v1/access-requests`
 
@@ -234,7 +262,7 @@ The message is optional and limited to 500 characters.
 
 These operations are registered under the authenticated vault routes.
 
-## 9. Write Request Review
+## 10. Write Request Review
 
 Base path: `/api/v1/vaults/:id/write-requests`
 
@@ -263,7 +291,7 @@ Allowed decisions:
 
 The owner must satisfy the applicable authorization and lifecycle checks.
 
-## 10. File Management
+## 11. File Management
 
 Base path: `/api/v1/vaults/:id/files`
 
@@ -304,7 +332,7 @@ Downloads a file associated with the specified vault, subject to authorization.
 
 Deletes a file associated with the specified vault. Physical blob cleanup is handled by the cleanup process.
 
-## 11. Shared File Operations
+## 12. Shared File Operations
 
 Base path: `/api/v1/shares`
 
@@ -317,7 +345,7 @@ These routes require authentication and a provisioned user.
 
 Shared-file operations enforce the applicable share permissions and access restrictions.
 
-## 12. Lifecycle and Asynchronous Cleanup
+## 13. Lifecycle and Asynchronous Cleanup
 
 Vault expiry is processed by the expiry scheduler.
 
@@ -330,7 +358,7 @@ In both cases, active and pending shares across the affected lineage are invalid
 
 Physical file deletion is asynchronous. Cleanup jobs are processed by the cleanup worker, which retries failed jobs and marks jobs as `FAILED` after the configured maximum number of attempts.
 
-## 13. Response and Error Handling
+## 14. Response and Error Handling
 
 Successful controller responses generally use a JSON envelope containing a `success` field and either `data` or a message.
 
@@ -338,7 +366,7 @@ Errors are passed through the centralized error handler.
 
 Clients should not assume that authentication alone grants permission to access a vault or file. Authorization is evaluated by the relevant application service.
 
-## 14. Implementation Notes
+## 15. Implementation Notes
 
 - The API is implemented using Express 5.
 - Request validation uses Zod schemas.
