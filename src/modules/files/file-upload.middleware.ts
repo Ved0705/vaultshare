@@ -1,11 +1,12 @@
 
 import multer from "multer";
 import { AppError } from "../../shared/app-error.js";
+import { env } from "../../config/env.js";
 
 export const fileUpload = multer({
     storage: multer.memoryStorage(),
     limits: {
-        fileSize: 10 * 1024 * 1024,
+        fileSize: env.MAX_FILE_SIZE_BYTES,
         files: 1,
     },
     fileFilter: (_req, file, callback) => {
