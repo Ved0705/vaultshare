@@ -12,6 +12,7 @@ const envSchema = z.object({
     CORS_ORIGINS: z.string().default("http://localhost:5173")
         .transform((value) => value.split(",").map((origin) => origin.trim()).filter(Boolean))
         .refine((origins) => origins.length > 0, "At least one CORS origin must be configured"),
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
     COGNITO_USERINFO_URL: z.string().url(),
     DATABASE_URL: z.string().url(),
     STORAGE_PATH: z.string().min(1),
@@ -28,6 +29,20 @@ const envSchema = z.object({
     if (value.VAULT_KEK_CURRENT_VERSION === 2 && !value.VAULT_KEK_V2_BASE64) {
         ctx.addIssue({ code: "custom", path: ["VAULT_KEK_V2_BASE64"], message: "Version 2 key is required when current KEK version is 2" });
     }
+    if (value.NODE_ENV === "production") {
+        if (!process.env.CORS_ORIGINS?.trim()) {
+            ctx.addIssue({ code: "custom", path: ["CORS_ORIGINS"], message: "CORS_ORIGINS must be explicitly configured in production" });
+        }
+        for (const origin of value.CORS_ORIGINS) {
+            try {
+                if (new URL(origin).protocol !== "https:") {
+                    ctx.addIssue({ code: "custom", path: ["CORS_ORIGINS"], message: "Production CORS origins must use HTTPS" });
+                }
+            } catch {
+                ctx.addIssue({ code: "custom", path: ["CORS_ORIGINS"], message: "Every CORS origin must be a valid URL" });
+            }
+        }
+    }
 });
 
 const result = envSchema.safeParse(process.env);
@@ -36,5 +51,4 @@ if (!result.success) {
     console.error(z.treeifyError(result.error));
     process.exit(1);
 }
-
 export const env = result.data;

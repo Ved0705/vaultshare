@@ -270,6 +270,14 @@ npm run kek:rotate -- --apply
 
 The command rewraps vault and WRITE-request DEKs; file DEKs remain protected by their parent vault DEK. Verify both tables have no version-1 records before restarting services. Keep the old key in configuration until recovery and backup retention have been validated. See `docs/SECURITY.md` for the full procedure.
 
+### Security middleware verification
+
+```powershell
+npm run security:middleware:test
+```
+
+Production requires explicit HTTPS-only `CORS_ORIGINS`. Set `TRUST_PROXY_HOPS` only to the exact trusted reverse-proxy hop count; leave it at `0` for direct/local connections.
+
 ## 12. Verification Checklist
 
 Run the following checks after making backend changes:

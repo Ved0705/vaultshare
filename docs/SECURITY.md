@@ -214,9 +214,11 @@ The Pino logger redacts authorization and cookie headers, request URLs and share
 
 ## 11. Application-Level Security
 
-The Express application uses Helmet security headers, enables HSTS in production, and applies a configured CORS origin allowlist. The default development origin is http://localhost:5173; production deployments must set CORS_ORIGINS to the exact trusted browser origins.
+The Express application uses Helmet security headers, enables HSTS in production, and applies a configured CORS origin allowlist. Production startup fails closed unless CORS_ORIGINS is explicitly supplied and every configured origin uses HTTPS. The default development origin is http://localhost:5173.
 
-A global API rate limiter is applied to /api/v1. Request payloads are validated using Zod at applicable route boundaries. File uploads use Multer and application-controlled storage paths.
+A global API rate limiter is applied to /api/v1 before body parsing. Authenticated share-open requests have an additional 5-per-15-minute identity-and-IP limit; file upload, download, and delete operations have an additional 30-per-15-minute identity-and-IP limit. The database-backed passphrase attempt counter remains scoped to each reader/share. TRUST_PROXY_HOPS defaults to 0 and must be set to the exact trusted proxy hop count only after deployment topology is known. Request payloads are validated using Zod; uploads use Multer and application-controlled paths.
+
+Run `npm run security:middleware:test` to verify production HSTS/security headers, CORS allowlisting, global 429 behavior, and Pino secret redaction.
 
 These controls reduce common input and application exposure risks but do not replace:
 - Per-identity and endpoint-specific abuse controls.
@@ -245,17 +247,17 @@ These controls reduce common input and application exposure risks but do not rep
 
 The following areas must not be treated as complete merely because the core encryption and lifecycle tests pass:
 
-- Per-identity and endpoint-specific rate limiting for sensitive operations, including upload/download and passphrase workflows.
+- A shared/distributed rate-limit store is required before running multiple API instances; the current express-rate-limit memory store is process-local.
 - Security audit logging and audit-event retention.
-- KEK rotation and operational key recovery.
+- Production KMS/HSM-backed KEK storage, access policy, recovery, and compromise procedures.
 - Production backup retention and deletion guarantees.
-- Cleanup-job monitoring and failed-job recovery procedures.
+- Deployment-level monitoring/alerting and operator procedures for cleanup jobs that reach FAILED.
 - Production notification security and delivery controls.
 - Automated security scanning and dependency monitoring.
-- Runtime negative tests proving secrets are absent from logs and API responses.
+- API-response leakage tests for every sensitive failure path; the focused middleware test verifies logger redaction, with generic error responses also covered by source review.
 - Production deployment hardening and incident-response procedures.
 
-These areas remain part of the wider security and PRD compliance audit.
+These are deployment- and operations-dependent release gates; repository code alone cannot complete them. A production KMS/HSM, shared rate-limit store, backup retention/deletion guarantees, monitoring, incident response, and external penetration test require infrastructure and decisions not present in this repository.
 
 ## 14. Security Testing
 
@@ -307,7 +309,11 @@ npm run account-deletion:test
 
 Account deletion should be tested with dedicated development identities. Do not use a real production identity for destructive verification.
 
-## 16. Security Status
+## 17. Security Status
+
+### Runtime middleware verification
+
+Run `npm run security:middleware:test`. The test starts the application in production mode on an ephemeral local port and checks CORS allow/reject behavior, HSTS and Helmet headers, global rate-limit HTTP 429 behavior, and representative Pino secret redaction. Authenticated route-specific limits should additionally be exercised with a Cognito/PostgreSQL test environment before release.
 
 VaultShare has implemented core authentication, authorization, encryption, share isolation, lifecycle handling, and asynchronous cleanup mechanisms.
 
