@@ -8,7 +8,7 @@ Object.assign(process.env, {
     NODE_ENV: "test", PORT: "3000", CORS_ORIGINS: "http://localhost:5173",
     TRUST_PROXY_HOPS: "0", COGNITO_USERINFO_URL: "https://example.test/userinfo",
     DATABASE_URL: process.env.DATABASE_URL ?? "postgres://user:pass@127.0.0.1:5433/vaultshare",
-    STORAGE_PATH: "./private-storage-security-test", MAIL_HOST: "localhost", MAIL_PORT: "1025",
+    STORAGE_PATH: "./private-storage-security-test", MAX_FILE_SIZE_BYTES: "5", MAIL_HOST: "localhost", MAIL_PORT: "1025",
     MAIL_FROM: "no-reply@example.test", COGNITO_REGION: "ap-south-1",
     COGNITO_USER_POOL_ID: "ap-south-1_example", COGNITO_CLIENT_ID: "security-test-client",
     VAULT_KEK_BASE64: testKey, VAULT_KEK_V2_BASE64: "", VAULT_KEK_CURRENT_VERSION: "1",
@@ -164,6 +164,13 @@ async function main() {
             vaultId: privateVaultId, fileId: privateFileId, ownerId: otherUserId,
         }), 404, "FILE_NOT_FOUND");
         console.log("PASS: cross-user vault listing, retrieval and file download are denied");
+
+        // The configured per-file limit is enforced by the service as well as Multer.
+        await expectAppError(uploadFileService({
+            vaultId: randomUUID(), ownerId,
+            file: { originalname: "too-large.txt", mimetype: "text/plain", size: 6, buffer: Buffer.alloc(6) } as Express.Multer.File,
+        }), 413, "FILE_TOO_LARGE");
+        console.log("PASS: configured per-file size limit is enforced by the service");
 
         // Quota checks are serialized by the vault row lock and reject before blob storage.
         const countVaultId = await createVault(ownerId, "file count quota fixture");
