@@ -1,3 +1,4 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 import { Writable } from "node:stream";
 import { after, before, test } from "node:test";
@@ -7,14 +8,19 @@ const testKey = Buffer.alloc(32, 7).toString("base64");
 Object.assign(process.env, {
     NODE_ENV: "production", PORT: "3000", CORS_ORIGINS: "https://client.example",
     TRUST_PROXY_HOPS: "0", COGNITO_USERINFO_URL: "https://example.com/userinfo",
-    DATABASE_URL: "postgres://user:pass@127.0.0.1:5433/vaultshare",
+    DATABASE_URL: process.env.DATABASE_URL ?? "postgres://user:pass@127.0.0.1:5433/vaultshare",
     STORAGE_PATH: "./private-storage-test", MAIL_HOST: "localhost", MAIL_PORT: "1025",
     MAIL_FROM: "no-reply@example.com", COGNITO_REGION: "ap-south-1",
     COGNITO_USER_POOL_ID: "ap-south-1_example", COGNITO_CLIENT_ID: "exampleclient",
     VAULT_KEK_BASE64: testKey, VAULT_KEK_V2_BASE64: "", VAULT_KEK_CURRENT_VERSION: "1",
 });
 
-const { default: app } = await import("../src/app.js");
+const [{ default: app }, { db, pool }, { auditEvents }, { and, eq, isNull }] = await Promise.all([
+    import("../src/app.js"),
+    import("../src/db/client.js"),
+    import("../src/db/schema/audit-events.js"),
+    import("drizzle-orm"),
+]);
 const { sensitiveLogRedactionPaths } = await import("../src/config/logger.js");
 let server: ReturnType<typeof app.listen>;
 let baseUrl = "";
@@ -26,9 +32,16 @@ before(async () => {
     assert.ok(address && typeof address !== "string");
     baseUrl = `http://127.0.0.1:${address.port}`;
 });
-after(async () => new Promise<void>((resolve, reject) =>
-    server.close((error) => error ? reject(error) : resolve()),
-));
+after(async () => {
+    await new Promise<void>((resolve, reject) =>
+        server.close((error) => error ? reject(error) : resolve()),
+    );
+    await db.delete(auditEvents).where(and(
+        isNull(auditEvents.actorUserId),
+        eq(auditEvents.route, "/api/v1/security-audit-probe"),
+    ));
+    await pool.end();
+});
 
 test("production security headers and CORS allowlist are enforced", async () => {
     const allowed = await fetch(`${baseUrl}/health`, { headers: { Origin: "https://client.example" } });

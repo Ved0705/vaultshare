@@ -9,6 +9,7 @@ import { vaults } from "../src/db/schema/vaults.js";
 import { deleteFolderService } from "../src/modules/folders/folder.service.js";
 
 const ownerId = randomUUID();
+const otherOwnerId = randomUUID();
 const folderId = randomUUID();
 const vaultId = randomUUID();
 
@@ -21,6 +22,12 @@ async function run() {
             emailVerified: true,
         });
 
+        await db.insert(users).values({
+            id: otherOwnerId,
+            cognitoSub: `folder-delete-other-${otherOwnerId}`,
+            email: `folder-delete-other-${otherOwnerId}@example.test`,
+            emailVerified: true,
+        });
         await db.insert(folders).values({
             id: folderId,
             ownerId,
@@ -42,6 +49,25 @@ async function run() {
             expiryPolicy: "DESTROY",
         });
 
+        await assert.rejects(
+            deleteFolderService(folderId, otherOwnerId),
+            (error: unknown) => (error as { statusCode?: number }).statusCode === 404,
+            "a different owner must not delete this folder",
+        );
+
+        const [folderAfterDeniedAttempt] = await db
+            .select()
+            .from(folders)
+            .where(eq(folders.id, folderId));
+        assert.ok(folderAfterDeniedAttempt, "folder must remain after cross-user denial");
+
+        const [vaultAfterDeniedAttempt] = await db
+            .select()
+            .from(vaults)
+            .where(eq(vaults.id, vaultId));
+        assert.ok(vaultAfterDeniedAttempt);
+        assert.equal(vaultAfterDeniedAttempt.folderId, folderId);
+        assert.equal(vaultAfterDeniedAttempt.encryptedContent, "encrypted-content-retained");
         const result = await deleteFolderService(folderId, ownerId);
         assert.deepEqual(result, { deleted: true, detachedVaultCount: 1 });
 
@@ -60,11 +86,13 @@ async function run() {
         assert.equal(remainingVault.status, "ACTIVE");
         assert.equal(remainingVault.encryptedContent, "encrypted-content-retained");
 
+        console.log("PASS: cross-user folder deletion is denied without mutation");
         console.log("PASS: folder deletion detaches vaults without destroying them");
     } finally {
         await db.delete(vaults).where(eq(vaults.id, vaultId));
         await db.delete(folders).where(eq(folders.id, folderId));
         await db.delete(users).where(eq(users.id, ownerId));
+        await db.delete(users).where(eq(users.id, otherOwnerId));
         await pool.end();
     }
 }

@@ -1,3 +1,4 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -6,7 +7,7 @@ const testKey = Buffer.alloc(32, 9).toString("base64");
 Object.assign(process.env, {
     NODE_ENV: "test", PORT: "3000", CORS_ORIGINS: "http://localhost:5173",
     TRUST_PROXY_HOPS: "0", COGNITO_USERINFO_URL: "https://example.test/userinfo",
-    DATABASE_URL: "postgres://user:pass@127.0.0.1:5433/vaultshare",
+    DATABASE_URL: process.env.DATABASE_URL ?? "postgres://user:pass@127.0.0.1:5433/vaultshare",
     STORAGE_PATH: "./private-storage-security-test", MAIL_HOST: "localhost", MAIL_PORT: "1025",
     MAIL_FROM: "no-reply@example.test", COGNITO_REGION: "ap-south-1",
     COGNITO_USER_POOL_ID: "ap-south-1_example", COGNITO_CLIENT_ID: "security-test-client",
@@ -84,11 +85,39 @@ async function main() {
                 (await import("drizzle-orm")).eq(auditEvents.actorUserId, ownerId),
             );
         }
-        const persistedAudit = auditRows.find((row) => row.route === "/:id" && row.method === "GET");
+        const persistedAudit = auditRows.find((row) => row.route === `/api/v1/vaults/:id` && row.method === "GET");
         assert.ok(persistedAudit, "authenticated request should persist an audit event");
         assert.equal(persistedAudit.statusCode, 200);
         assert.equal(persistedAudit.resourceId, auditVaultId);
         console.log("PASS: authenticated API request is persisted in audit history");
+
+        const anonymousShareCode = "0123456789abcdef0123456789abcdef";
+        const anonymousAuditReq = {
+            method: "POST",
+            path: `/api/v1/shares/${anonymousShareCode}/open`,
+        };
+        const anonymousAuditRes = new EventEmitter() as EventEmitter & { statusCode: number };
+        anonymousAuditRes.statusCode = 401;
+        auditRequest(anonymousAuditReq as never, anonymousAuditRes as never, () => undefined);
+        anonymousAuditRes.emit("finish");
+
+        let anonymousAuditRows: Array<typeof auditEvents.$inferSelect> = [];
+        for (let attempt = 0; attempt < 20 && anonymousAuditRows.length === 0; attempt++) {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+            anonymousAuditRows = await db.select().from(auditEvents).where(
+                (await import("drizzle-orm")).and(
+                    (await import("drizzle-orm")).isNull(auditEvents.actorUserId),
+                    (await import("drizzle-orm")).eq(auditEvents.route, "/api/v1/shares/:shareCode/open"),
+                    (await import("drizzle-orm")).eq(auditEvents.statusCode, 401),
+                ),
+            );
+        }
+        const anonymousAudit = anonymousAuditRows[0];
+        assert.ok(anonymousAudit, "unauthenticated denied request should be audited");
+        assert.equal(anonymousAudit.actorCognitoSub, null);
+        assert.equal(anonymousAudit.route.includes(anonymousShareCode), false);
+        assert.equal(anonymousAudit.resourceId, null);
+        console.log("PASS: unauthenticated denied requests are audited with share codes redacted");
 
         // Logout stores the presented access-token jti; the same lookup is used by authenticate().
         const jti = `security-logout-${randomUUID()}`;
@@ -184,6 +213,7 @@ async function main() {
         if (vaultIds.length) await db.delete(vaults).where((await import("drizzle-orm")).inArray(vaults.id, vaultIds));
         if (jtis.length) await db.delete(revokedAccessTokens).where((await import("drizzle-orm")).inArray(revokedAccessTokens.jti, jtis));
         await db.delete(auditEvents).where((await import("drizzle-orm")).eq(auditEvents.actorUserId, ownerId));
+        await db.delete(auditEvents).where((await import("drizzle-orm")).and((await import("drizzle-orm")).isNull(auditEvents.actorUserId), (await import("drizzle-orm")).eq(auditEvents.route, "/api/v1/shares/:shareCode/open")));
         await db.delete(users).where((await import("drizzle-orm")).inArray(users.id, [ownerId, otherUserId]));
         await pool.end();
     }
