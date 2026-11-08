@@ -7,11 +7,13 @@ on:
       - phase-11-completion
       - frontend/v1-dashboard
       - frontend/product-replacement
+      - frontend/reader-workspace
   pull_request:
     branches:
       - master
       - frontend/v1-dashboard
       - frontend/product-replacement
+      - frontend/reader-workspace
   workflow_dispatch:
 
 jobs:
