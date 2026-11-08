@@ -17,3 +17,4 @@ private-storage/
 *.log
 .DS_Store
 Thumbs.db
+frontend/tsconfig.tsbuildinfo
