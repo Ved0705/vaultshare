@@ -80,6 +80,9 @@ jobs:
       - name: Vault lifecycle and lineage integration
         run: npm run lifecycle:test
 
+      - name: Share passphrase generation integration
+        run: npm run share-passphrase:test
+
       - name: Share access and notification integration
         run: npm run share-access:test
 
