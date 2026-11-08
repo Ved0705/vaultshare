@@ -79,6 +79,7 @@ CORS_ORIGINS=http://localhost:5173
 DATABASE_URL=postgresql://vaultshare:local_dev_password@localhost:5433/vaultshare
 
 STORAGE_PATH=./private-storage
+MAX_FILE_SIZE_BYTES=10485760
 
 MAIL_HOST=localhost
 MAIL_PORT=1025
@@ -313,6 +314,14 @@ npm run lifecycle:test
 npm run file-cleanup:test
 npm run write-race:test
 npm run share-isolation:test
+npm run account-deletion:test
+npm run folder-deletion:test
+npm run share-passphrase:test
+npm run audit-history:test
+npm run security:integration:test
+npm run security:middleware:test
+npm run notifications:test
+npm run access-request-notifications:test
 ```
 
 Check whitespace and patch formatting:
