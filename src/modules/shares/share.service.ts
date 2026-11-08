@@ -109,6 +109,26 @@ export async function createShareService(input: CreateShareInput) {
             );
         }
 
+        const [exhaustedPriorShare] = await tx
+            .select({ id: shares.id })
+            .from(shares)
+            .where(
+                and(
+                    eq(shares.vaultId, vault.id),
+                    eq(shares.readerId, reader.id),
+                    eq(shares.status, "expired"),
+                ),
+            )
+            .limit(1);
+
+        if (exhaustedPriorShare) {
+            throw new AppError(
+                409,
+                "SHARE_ACCESS_EXHAUSTED",
+                "Extend the existing share's access count instead of creating a replacement share.",
+            );
+        }
+
         // 3. Prevent duplicate active shares.
         const [existingShare] = await tx
             .select({ id: shares.id })
