@@ -22,7 +22,7 @@ const envSchema = z.object({
     COGNITO_USER_POOL_ID: z.string().min(1),
     COGNITO_CLIENT_ID: z.string().min(1),
     VAULT_KEK_BASE64: z.string().refine(base64Key, "VAULT_KEK_BASE64 must be a valid base64-encoded 32-byte key"),
-    VAULT_KEK_V2_BASE64: z.string().optional().refine((value) => value === undefined || base64Key(value), "VAULT_KEK_V2_BASE64 must be a valid base64-encoded 32-byte key"),
+    VAULT_KEK_V2_BASE64: z.preprocess((value) => value === "" ? undefined : value, z.string().refine(base64Key, "VAULT_KEK_V2_BASE64 must be a valid base64-encoded 32-byte key").optional()),
     VAULT_KEK_CURRENT_VERSION: z.coerce.number().int().min(1).max(2).default(1),
 }).superRefine((value, ctx) => {
     if (value.VAULT_KEK_CURRENT_VERSION === 2 && !value.VAULT_KEK_V2_BASE64) {
