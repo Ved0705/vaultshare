@@ -120,6 +120,13 @@
       "when": 1794050000000,
       "tag": "0016_add_kek_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794140000000,
+      "tag": "0017_security_reliability_controls",
+      "breakpoints": true
     }
   ]
 }

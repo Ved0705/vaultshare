@@ -15,6 +15,8 @@ import shareAccessRoutes from "./modules/shares/share-access.routes.js";
 import accessRequestRoutes from "./modules/shares/access-request.routes.js";
 import sharedFileRoutes from "./modules/files/shared-file.routes.js";
 import folderRoutes from "./modules/folders/folder.routes.js";
+import { auditRequest } from "./middleware/audit.middleware.js";
+import { logoutController } from "./modules/users/auth-session.controller.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -28,6 +30,7 @@ app.use(cors({
     },
 }));
 app.use(pinoHttp({ logger }));
+app.use(auditRequest);
 
 const apiRateLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -44,6 +47,7 @@ app.get("/health", (_req, res) => res.status(200).json({
     success: true, data: { status: "healthy", service: "VaultShare API" },
 }));
 app.get("/api/v1/auth/me", authenticate, getCurrentUser);
+app.post("/api/v1/auth/logout", authenticate, logoutController);
 app.delete("/api/v1/users/me", authenticate, deleteCurrentAccount);
 app.use("/api/v1/vaults", vaultRoutes);
 app.use("/api/v1/folders", folderRoutes);

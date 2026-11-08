@@ -248,13 +248,13 @@ These controls reduce common input and application exposure risks but do not rep
 The following areas must not be treated as complete merely because the core encryption and lifecycle tests pass:
 
 - A shared/distributed rate-limit store is required before running multiple API instances; the current express-rate-limit memory store is process-local.
-- Security audit logging and audit-event retention.
+- Audit events record authenticated API activity without request bodies or secrets; asynchronous persistence can still have gaps. A 365-day prune command is available in dry-run mode by default.
 - Production KMS/HSM-backed KEK storage, access policy, recovery, and compromise procedures.
-- Production backup retention and deletion guarantees.
-- Deployment-level monitoring/alerting and operator procedures for cleanup jobs that reach FAILED.
+- Production backup retention and deletion guarantees. Local manual backup/restore guidance is in docs/BACKUP-RECOVERY.md; no automatic immutable backup service is configured.
+- External monitoring/alerting is not configured. The cleanup:status command reports queue counts and exits non-zero when FAILED jobs exist or pending age exceeds 15 minutes.
 - Production notification security and delivery controls.
 - Automated security scanning and dependency monitoring.
-- API-response leakage tests for every sensitive failure path; the focused middleware test verifies logger redaction, with generic error responses also covered by source review.
+- API-response leakage tests for every sensitive failure path and complete two-identity IDOR coverage remain release gates.
 - Production deployment hardening and incident-response procedures.
 
 These are deployment- and operations-dependent release gates; repository code alone cannot complete them. A production KMS/HSM, shared rate-limit store, backup retention/deletion guarantees, monitoring, incident response, and external penetration test require infrastructure and decisions not present in this repository.

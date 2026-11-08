@@ -25,7 +25,9 @@
     "kek:rotate": "tsx src/infrastructure/encryption/rotate-kek.ts",
     "security:middleware:test": "tsx tests/security-middleware.integration-test.ts",
     "share-access:test": "tsx tests/share-access.integration-test.ts",
-    "folder-deletion:test": "tsx tests/folder-deletion.integration-test.ts"
+    "folder-deletion:test": "tsx tests/folder-deletion.integration-test.ts",
+    "audit:prune": "tsx src/modules/files/audit-retention.ts",
+    "cleanup:status": "tsx src/modules/files/cleanup-status.ts"
   },
   "keywords": [],
   "author": "",

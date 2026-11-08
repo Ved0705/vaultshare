@@ -252,6 +252,8 @@ This test verifies configured SMTP integration. It does not establish that all a
 | `npm run email:test` | Test email integration |
 | `npm run expiry:scheduler` | Start vault expiry scheduler |
 | `npm run cleanup:worker` | Start cleanup worker |
+| `npm run cleanup:status` | Report cleanup queue counts and alert conditions |
+| `npm run audit:prune` | Dry-run 365-day audit retention cleanup |
 | `npm run kek:rotate` | Dry-run KEK v1-to-v2 envelope rotation (requires both keys) |
 
 ### Controlled KEK rotation (maintenance operation)
@@ -275,6 +277,8 @@ The command rewraps vault and WRITE-request DEKs; file DEKs remain protected by 
 ```powershell
 npm run security:middleware:test
 ```
+
+Run `npm run audit:prune -- --apply` only after reviewing the dry-run count and confirming the 365-day retention policy. Run `npm run cleanup:status` during operations; exit code 2 indicates failed jobs or pending work older than 15 minutes.
 
 Production requires explicit HTTPS-only `CORS_ORIGINS`. Set `TRUST_PROXY_HOPS` only to the exact trusted reverse-proxy hop count; leave it at `0` for direct/local connections.
 

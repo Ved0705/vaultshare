@@ -1,6 +1,6 @@
 
 import { randomUUID } from "node:crypto";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { readEncryptedFile } from "./file-storage.service.js";
 import { decryptFileContent, encryptFileContent } from "../../infrastructure/encryption/encryption.service.js";
 import { db } from "../../db/client.js";
@@ -106,6 +106,13 @@ export async function uploadFileService(input: UploadFileInput) {
                     "Files cannot be changed after a reader has opened the vault.",
                 );
             }
+
+            const [usage] = await tx.select({
+                fileCount: sql<number>`count(*)::int`,
+                totalBytes: sql<number>`coalesce(sum(size_bytes), 0)::bigint`,
+            }).from(files).where(and(eq(files.vaultId, vault.id), eq(files.status, "ACTIVE")));
+            if (usage.fileCount >= 100) throw new AppError(413, "VAULT_FILE_COUNT_LIMIT", "A vault can contain at most 100 active files.");
+            if (Number(usage.totalBytes) + input.file.size > 100 * 1024 * 1024) throw new AppError(413, "VAULT_STORAGE_LIMIT", "A vault can contain at most 100 MiB of active files.");
 
             const encrypted = encryptFileContent(
                 vault.id,
