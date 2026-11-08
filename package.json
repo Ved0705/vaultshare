@@ -23,7 +23,9 @@
     "account-deletion-worker": "tsx src/modules/users/account-deletion.worker.ts",
     "account-deletion:test": "tsx tests/account-deletion.integration-test.ts",
     "kek:rotate": "tsx src/infrastructure/encryption/rotate-kek.ts",
-    "security:middleware:test": "tsx tests/security-middleware.integration-test.ts"
+    "security:middleware:test": "tsx tests/security-middleware.integration-test.ts",
+    "share-access:test": "tsx tests/share-access.integration-test.ts",
+    "folder-deletion:test": "tsx tests/folder-deletion.integration-test.ts"
   },
   "keywords": [],
   "author": "",
