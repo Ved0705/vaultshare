@@ -64,7 +64,9 @@ The application expects the following configuration:
 | `MAIL_HOST` | SMTP server hostname |
 | `MAIL_PORT` | SMTP server port |
 | `MAIL_FROM` | Sender email address |
-| `VAULT_KEK_BASE64` | Base64-encoded 32-byte encryption key |
+| `VAULT_KEK_BASE64` | Base64-encoded 32-byte KEK version 1 (retain for old records) |
+| `VAULT_KEK_V2_BASE64` | Optional independent 32-byte KEK version 2 for controlled rotation |
+| `VAULT_KEK_CURRENT_VERSION` | KEK version used for new vault and WRITE-request records (default `1`) |
 
 For the local Docker Compose configuration, use:
 
@@ -99,7 +101,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 Set the generated value as `VAULT_KEK_BASE64`.
 
-Keep the key stable for the lifetime of the data encrypted with it. Replacing it without a corresponding key-rotation or re-encryption procedure can make existing vault content undecryptable.
+Keep the key stable for the lifetime of the data encrypted with it. Replacing it without a corresponding key-rotation or re-encryption procedure can make existing vault content undecryptable. For rotation, retain the old value as version 1, configure a new independent value in `VAULT_KEK_V2_BASE64`, and follow the controlled procedure in `docs/SECURITY.md`. Never remove the old key just because the rotation command completed.
 
 **Never commit `.env`, expose real credentials, or place encryption keys in `.env.example`.**
 
@@ -250,6 +252,23 @@ This test verifies configured SMTP integration. It does not establish that all a
 | `npm run email:test` | Test email integration |
 | `npm run expiry:scheduler` | Start vault expiry scheduler |
 | `npm run cleanup:worker` | Start cleanup worker |
+| `npm run kek:rotate` | Dry-run KEK v1-to-v2 envelope rotation (requires both keys) |
+
+### Controlled KEK rotation (maintenance operation)
+
+Do not run this against a live application. First take a restorable database backup and stop the API and all background workers. Configure both KEK versions and set `VAULT_KEK_CURRENT_VERSION=2`, then apply migrations. Run the dry run:
+
+```powershell
+npm run kek:rotate
+```
+
+Only after reviewing the counts, commit the single database transaction:
+
+```powershell
+npm run kek:rotate -- --apply
+```
+
+The command rewraps vault and WRITE-request DEKs; file DEKs remain protected by their parent vault DEK. Verify both tables have no version-1 records before restarting services. Keep the old key in configuration until recovery and backup retention have been validated. See `docs/SECURITY.md` for the full procedure.
 
 ## 12. Verification Checklist
 
