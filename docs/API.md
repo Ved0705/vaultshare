@@ -20,7 +20,7 @@ Authorization: Bearer <COGNITO_ACCESS_TOKEN>
 
 Vault routes, share-access routes, shared-file routes, and access-request routes additionally require a provisioned application user.
 
-`GET /api/v1/auth/me` requires authentication.
+`GET /api/v1/auth/me` and `POST /api/v1/auth/logout` require authentication.
 
 `GET /health` is public.
 
@@ -44,14 +44,22 @@ Deletes the authenticated user's VaultShare account through the account-deletion
 |---|---|---|---|
 | GET | `/health` | API health check | Public |
 | GET | `/api/v1/auth/me` | Retrieve current authenticated user | Required |
+| POST | `/api/v1/auth/logout` | Revoke the presented access-token JTI for this application | Required |
 
 ## 5. Folder Management
 
-Base path: `/api/v1/folders`
+Base path: `/api/v1/folders`. All folder operations require authentication and a provisioned user. A folder name is trimmed and must contain 1–100 characters.
 
 | Method | Endpoint | Description |
 |---|---|---|
+| POST | `/api/v1/folders` | Create a folder |
+| GET | `/api/v1/folders` | List the caller's folders |
+| PATCH | `/api/v1/folders/:id` | Rename an owned folder |
 | DELETE | `/api/v1/folders/:id` | Delete a folder and move its vaults to the root |
+
+Create and rename request body: { "name": "Project Notes" }
+
+The list endpoint returns only folders owned by the authenticated user. An attempt to update or delete another user's folder returns not found.
 
 Folder deletion is owner-scoped and non-destructive. Vaults are detached from the folder; their encrypted content, files, shares, and lifecycle state are preserved.
 
@@ -145,6 +153,14 @@ Base path: `/api/v1/vaults/:id/shares`
 | PATCH | `/api/v1/vaults/:id/shares/:shareId/revoke` | Revoke an individual share |
 | PATCH | `/api/v1/vaults/:id/shares/revoke-all` | Revoke all shares for a vault |
 | PATCH | `/api/v1/vaults/:id/shares/:shareId/extend` | Extend remaining access count and/or post-open TTL |
+
+### Generate a passphrase
+
+`POST /api/v1/vaults/:id/shares/passphrase`
+
+Generates a new 32-character URL-safe Base64URL passphrase using 24 cryptographically random bytes (192 bits of entropy). The operation is owner-scoped, accepts no request body, and does not persist the generated secret. The caller must securely copy it before navigating away; it is not retrievable later.
+
+Example response: success=true, data.passphrase contains the generated secret, data.entropyBits=192.
 
 ### Create share
 
@@ -312,7 +328,7 @@ Form field:
 
 - `file`: the file to upload.
 
-The current upload middleware accepts one file per request and enforces a maximum file size of 10 MB. Filenames must be present and no longer than 255 characters.
+The current upload middleware accepts one file per request. The maximum size is configured by MAX_FILE_SIZE_BYTES (default 10 MiB; hard maximum 100 MiB). Filenames must be present and no longer than 255 characters. MIME types are not allowlisted. No per-user or per-vault aggregate storage quota is currently enforced.
 
 ### List vault files
 
@@ -372,8 +388,30 @@ Clients should not assume that authentication alone grants permission to access 
 - Request validation uses Zod schemas.
 - Authentication uses AWS Cognito access tokens.
 - Vault content and file operations are subject to application-level authorization.
-- The API currently does not expose a generated OpenAPI/Swagger specification.
+- The machine-readable OpenAPI 3.1 contract is maintained at docs/openapi.yaml. It can be imported into Swagger UI / Swagger Editor; a hosted interactive Swagger UI is not bundled into the API.
 
 ---
 
 This document describes the routes registered in the current application. Request validation details should be kept synchronized with their corresponding Zod schemas as the implementation evolves.
+
+## 16. Personal Audit History
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/v1/audit-events` | List the authenticated user's own audit events |
+
+Query parameters: limit (default 25, range 1–100) and offset (default 0, minimum 0).
+
+The endpoint returns the caller's events only. Each event contains its action, method, normalized route, resource UUID where available, HTTP status code, and creation timestamp. Share codes and UUIDs are replaced in the stored route with placeholders. Request bodies and query strings are not stored. Audit persistence occurs asynchronously after the response finishes; this history is not a tamper-proof compliance ledger.
+
+## 17. Logout
+
+POST /api/v1/auth/logout adds the presented token JTI to the application's revoked-token table until token expiry. It returns HTTP 204 on success. Clients should also clear their local token material. This endpoint revokes the token for VaultShare API use; it does not replace Cognito-wide sign-out on every client/device.
+
+## 18. Notification delivery
+
+Notifications are enqueued transactionally for share creation/revocation and access/WRITE request creation/review. Email content is metadata-only. The API does not deliver mail inline; a separate process must run `npm run notifications:worker`. See Setup & Operations.
+
+## 19. OpenAPI
+
+The OpenAPI 3.1 specification is maintained in openapi.yaml. Keep it synchronized with the registered Express routes and Zod validators.
