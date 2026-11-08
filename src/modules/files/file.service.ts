@@ -1,11 +1,12 @@
 
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { readEncryptedFile } from "./file-storage.service.js";
 import { decryptFileContent, encryptFileContent } from "../../infrastructure/encryption/encryption.service.js";
 import { db } from "../../db/client.js";
 import { files } from "../../db/schema/files.js";
 import { vaults } from "../../db/schema/vaults.js";
+import { shares } from "../../db/schema/shares.js";
 import { cleanupJobs } from "../../db/schema/cleanup-jobs.js";
 import {
     storeEncryptedFile,
@@ -84,6 +85,25 @@ export async function uploadFileService(input: UploadFileInput) {
                     410,
                     "VAULT_UNAVAILABLE",
                     "Vault is not available.",
+                );
+            }
+
+            const [openedShare] = await tx
+                .select({ id: shares.id })
+                .from(shares)
+                .where(
+                    and(
+                        eq(shares.vaultId, vault.id),
+                        isNotNull(shares.firstOpenedAt),
+                    ),
+                )
+                .limit(1);
+
+            if (openedShare) {
+                throw new AppError(
+                    409,
+                    "VAULT_IMMUTABLE",
+                    "Files cannot be changed after a reader has opened the vault.",
                 );
             }
 
@@ -285,6 +305,25 @@ export async function deleteFileService(input: {
                 410,
                 "VAULT_UNAVAILABLE",
                 "Vault is not available.",
+            );
+        }
+
+        const [openedShare] = await tx
+            .select({ id: shares.id })
+            .from(shares)
+            .where(
+                and(
+                    eq(shares.vaultId, vault.id),
+                    isNotNull(shares.firstOpenedAt),
+                ),
+            )
+            .limit(1);
+
+        if (openedShare) {
+            throw new AppError(
+                409,
+                "VAULT_IMMUTABLE",
+                "Files cannot be changed after a reader has opened the vault.",
             );
         }
 
