@@ -131,3 +131,23 @@ jobs:
 
       - name: SMTP integration
         run: npm run email:test
+
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+      - name: Frontend typecheck
+        run: npm run typecheck
+      - name: Frontend production build
+        run: npm run build
