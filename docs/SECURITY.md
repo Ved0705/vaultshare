@@ -266,7 +266,26 @@ The following targeted tests have been reported passing during development:
 
 These are development integration tests, not a substitute for a full penetration test or independent security review.
 
-## 15. Security Status
+## 15. Account Deletion
+
+Account deletion is implemented as a retryable lifecycle workflow.
+
+- The authenticated user is identified through the verified Cognito subject and matched to the application user record.
+- The account is moved from `ACTIVE` to `DELETION_PENDING` before destructive work begins, blocking further application access.
+- Vault data is destroyed and encrypted file cleanup is queued.
+- The Cognito identity is deleted through the Cognito administrative API.
+- Relational records are finalized while retaining a `DELETED` tombstone.
+- If Cognito deletion fails, the account remains pending so the deletion worker can retry.
+
+The workflow is designed to be safely retried. Account deletion tests are available through:
+
+```bash
+npm run account-deletion:test
+```
+
+Account deletion should be tested with dedicated development identities. Do not use a real production identity for destructive verification.
+
+## 16. Security Status
 
 VaultShare has implemented core authentication, authorization, encryption, share isolation, lifecycle handling, and asynchronous cleanup mechanisms.
 
