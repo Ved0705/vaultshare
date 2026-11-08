@@ -28,7 +28,9 @@
     "folder-deletion:test": "tsx tests/folder-deletion.integration-test.ts",
     "audit:prune": "tsx src/modules/files/audit-retention.ts",
     "cleanup:status": "tsx src/modules/files/cleanup-status.ts",
-    "security:integration:test": "tsx tests/security-regression.integration-test.ts"
+    "security:integration:test": "tsx tests/security-regression.integration-test.ts",
+    "notifications:worker": "tsx src/infrastructure/email/notification.worker.ts",
+    "notifications:test": "tsx tests/notification-outbox.integration-test.ts"
   },
   "keywords": [],
   "author": "",
