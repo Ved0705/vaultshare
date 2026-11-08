@@ -17,6 +17,8 @@ import sharedFileRoutes from "./modules/files/shared-file.routes.js";
 import folderRoutes from "./modules/folders/folder.routes.js";
 import { auditRequest } from "./middleware/audit.middleware.js";
 import { logoutController } from "./modules/users/auth-session.controller.js";
+import { requireProvisionedUser } from "./middleware/require-provisioned-user.js";
+import { listOwnAuditEventsController } from "./modules/audit/audit-history.controller.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -49,6 +51,7 @@ app.get("/health", (_req, res) => res.status(200).json({
 app.get("/api/v1/auth/me", authenticate, getCurrentUser);
 app.post("/api/v1/auth/logout", authenticate, logoutController);
 app.delete("/api/v1/users/me", authenticate, deleteCurrentAccount);
+app.get("/api/v1/audit-events", authenticate, requireProvisionedUser, listOwnAuditEventsController);
 app.use("/api/v1/vaults", vaultRoutes);
 app.use("/api/v1/folders", folderRoutes);
 app.use("/api/v1/shares", shareAccessRoutes);
