@@ -74,6 +74,17 @@ export async function openShareService(input: OpenShareInput) {
             throw new AppError(404, "SHARE_NOT_FOUND", "Share not found");
         }
 
+        if (
+            share.status === "expired" &&
+            share.successfulOpenCount >= share.maxAccessCount
+        ) {
+            throw new AppError(
+                410,
+                "ACCESS_LIMIT_REACHED",
+                "The access limit has been reached",
+            );
+        }
+
         if (share.status !== "active") {
             throw new AppError(
                 410,
