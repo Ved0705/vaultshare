@@ -34,6 +34,8 @@ export const vaults = pgTable(
 
         encryptedDek: text("encrypted_dek").notNull(),
 
+        kekVersion: integer("kek_version").notNull().default(1),
+
         encryptionNonce: varchar("encryption_nonce", { length: 64 }).notNull(),
 
         encryptionTag: varchar("encryption_tag", { length: 64 }).notNull(),
