@@ -161,6 +161,7 @@ export async function createWriteRequestService(
                 status: "PENDING",
                 encryptedContent: encrypted.encryptedContent,
                 encryptedDek: encrypted.encryptedDek,
+                kekVersion: encrypted.kekVersion,
                 encryptionNonce: encrypted.encryptionNonce,
                 encryptionTag: encrypted.encryptionTag,
             })
