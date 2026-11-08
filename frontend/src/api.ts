@@ -46,6 +46,6 @@ export const api = {
   revokeVault: (id: string) => request<void>(`/vaults/${id}/revoke`, { method: "POST" }),
   listFolders: () => request<{ folders: Folder[] }>("/folders"),
   createFolder: (name: string) => request<Folder>("/folders", { method: "POST", body: JSON.stringify({ name }) }),
-  listAudit: () => request<AuditEvent[]>("/audit-events?limit=25&offset=0"),
+  listAudit: () => request<{ events: AuditEvent[]; limit: number; offset: number }>("/audit-events?limit=25&offset=0"),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
 };
