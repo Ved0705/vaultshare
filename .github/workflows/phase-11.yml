@@ -80,8 +80,14 @@ jobs:
       - name: Vault lifecycle and lineage integration
         run: npm run lifecycle:test
 
+      - name: Share access and notification integration
+        run: npm run share-access:test
+
       - name: Share revocation isolation integration
         run: npm run share-isolation:test
+
+      - name: Access request notification integration
+        run: npm run access-request-notifications:test
 
       - name: WRITE approval and revocation race integration
         run: npm run write-race:test
