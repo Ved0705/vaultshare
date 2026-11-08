@@ -35,19 +35,8 @@ app.use(cors({
         callback(null, false);
     },
 }));
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: false }));
 app.use(pinoHttp({ logger }));
 
-app.get("/health", (_req, res) => {
-    res.status(200).json({
-        success: true,
-        data: {
-            status: "healthy",
-            service: "VaultShare API",
-        },
-    });
-});
 const apiRateLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 100,
@@ -62,7 +51,21 @@ const apiRateLimiter = rateLimit({
     },
 });
 
+// Apply API limits before parsing request bodies to reduce parser resource abuse.
 app.use("/api/v1", apiRateLimiter);
+
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: false }));
+
+app.get("/health", (_req, res) => {
+    res.status(200).json({
+        success: true,
+        data: {
+            status: "healthy",
+            service: "VaultShare API",
+        },
+    });
+});
 app.get("/api/v1/auth/me", authenticate, getCurrentUser);
 
 app.delete(
