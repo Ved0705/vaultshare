@@ -133,12 +133,18 @@ export async function openShareService(input: OpenShareInput) {
                 )
                 : share.postOpenExpiresAt;
 
+        const nextSuccessfulOpenCount = share.successfulOpenCount + 1;
+        const accessLimitReached = nextSuccessfulOpenCount >= share.maxAccessCount;
+
         await tx
             .update(shares)
             .set({
                 successfulOpenCount: sql`${shares.successfulOpenCount} + 1`,
                 firstOpenedAt: share.firstOpenedAt ?? now,
                 postOpenExpiresAt,
+                // Exhaustion prevents future opens while preserving the final
+                // reader session for file access until its post-open TTL ends.
+                ...(accessLimitReached ? { status: "expired" } : {}),
                 updatedAt: now,
             })
             .where(eq(shares.id, share.id));
