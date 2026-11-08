@@ -168,6 +168,7 @@ export async function reviewWriteRequestService(
         const proposedContent = decryptVaultContent(request.id, {
             encryptedContent: request.encryptedContent,
             encryptedDek: request.encryptedDek,
+            kekVersion: request.kekVersion,
             encryptionNonce: request.encryptionNonce,
             encryptionTag: request.encryptionTag,
         });
@@ -189,6 +190,7 @@ export async function reviewWriteRequestService(
                 description: "Approved derived copy",
                 encryptedContent: encrypted.encryptedContent,
                 encryptedDek: encrypted.encryptedDek,
+                kekVersion: encrypted.kekVersion,
                 encryptionNonce: encrypted.encryptionNonce,
                 encryptionTag: encrypted.encryptionTag,
                 status: "ACTIVE",
