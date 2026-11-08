@@ -10,8 +10,6 @@ info:
 servers:
   - url: http://localhost:3000
     description: Local development
-  - url: http://localhost:3000/api/v1
-    description: Local API base (use path prefix only once)
 tags:
   - name: Health
   - name: Identity
