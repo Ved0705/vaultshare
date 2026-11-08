@@ -14,6 +14,7 @@ import vaultRoutes from "./modules/vaults/vault.routes.js";
 import shareAccessRoutes from "./modules/shares/share-access.routes.js";
 import accessRequestRoutes from "./modules/shares/access-request.routes.js";
 import sharedFileRoutes from "./modules/files/shared-file.routes.js";
+import folderRoutes from "./modules/folders/folder.routes.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -45,6 +46,7 @@ app.get("/health", (_req, res) => res.status(200).json({
 app.get("/api/v1/auth/me", authenticate, getCurrentUser);
 app.delete("/api/v1/users/me", authenticate, deleteCurrentAccount);
 app.use("/api/v1/vaults", vaultRoutes);
+app.use("/api/v1/folders", folderRoutes);
 app.use("/api/v1/shares", shareAccessRoutes);
 app.use("/api/v1/shares", sharedFileRoutes);
 app.use("/api/v1/access-requests", accessRequestRoutes);
