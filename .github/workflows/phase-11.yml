@@ -65,6 +65,9 @@ jobs:
       - name: Apply database migrations
         run: npx drizzle-kit migrate
 
+      - name: Validate OpenAPI YAML
+        run: ruby -e 'require "yaml"; YAML.load_file("docs/openapi.yaml")'
+
       - name: Typecheck
         run: npm run typecheck
 
