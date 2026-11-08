@@ -26,14 +26,26 @@ Vault routes, share-access routes, shared-file routes, and access-request routes
 
 Authentication does not automatically grant access to a vault. Application-level authorization and share restrictions are enforced separately.
 
-## 3. Health and Authentication
+## 3. Account Management
+
+| Method | Endpoint | Description | Authentication |
+|---|---|---|---|
+| DELETE | `/api/v1/users/me` | Delete the authenticated user's VaultShare account | Required |
+
+### Delete current account
+
+`DELETE /api/v1/users/me`
+
+Deletes the authenticated user's VaultShare account through the account-deletion workflow. The operation marks the account as pending, destroys associated vault data and queues encrypted file cleanup, deletes the Cognito identity, and finalizes the application account as a deleted tombstone. If an external Cognito deletion step fails, the account remains pending for worker retry.
+
+## 4. Health and Authentication
 
 | Method | Endpoint | Description | Authentication |
 |---|---|---|---|
 | GET | `/health` | API health check | Public |
 | GET | `/api/v1/auth/me` | Retrieve current authenticated user | Required |
 
-## 4. Vault Management
+## 5. Vault Management
 
 Base path: `/api/v1/vaults`
 
@@ -113,7 +125,7 @@ This operation is irreversible for the derived vaults.
 
 Permanently destroys the selected vault and its derived vaults. Encrypted payloads are cleared and physical file cleanup is queued for asynchronous processing.
 
-## 5. Share Management
+## 6. Share Management
 
 Base path: `/api/v1/vaults/:id/shares`
 
@@ -149,7 +161,7 @@ Validation:
 
 Individual share revocation affects the selected share and does not destroy the vault or its derived-vault lineage.
 
-## 6. Share Access
+## 7. Share Access
 
 Base path: `/api/v1/shares`
 
@@ -190,7 +202,7 @@ Validation:
 
 Write requests are reviewed by the vault owner. Approval creates a derived vault rather than directly overwriting the original.
 
-## 7. Access Requests
+## 8. Access Requests
 
 Base path: `/api/v1/access-requests`
 
@@ -222,7 +234,7 @@ The message is optional and limited to 500 characters.
 
 These operations are registered under the authenticated vault routes.
 
-## 8. Write Request Review
+## 9. Write Request Review
 
 Base path: `/api/v1/vaults/:id/write-requests`
 
@@ -251,7 +263,7 @@ Allowed decisions:
 
 The owner must satisfy the applicable authorization and lifecycle checks.
 
-## 9. File Management
+## 10. File Management
 
 Base path: `/api/v1/vaults/:id/files`
 
@@ -292,7 +304,7 @@ Downloads a file associated with the specified vault, subject to authorization.
 
 Deletes a file associated with the specified vault. Physical blob cleanup is handled by the cleanup process.
 
-## 10. Shared File Operations
+## 11. Shared File Operations
 
 Base path: `/api/v1/shares`
 
@@ -305,7 +317,7 @@ These routes require authentication and a provisioned user.
 
 Shared-file operations enforce the applicable share permissions and access restrictions.
 
-## 11. Lifecycle and Asynchronous Cleanup
+## 12. Lifecycle and Asynchronous Cleanup
 
 Vault expiry is processed by the expiry scheduler.
 
@@ -318,7 +330,7 @@ In both cases, active and pending shares across the affected lineage are invalid
 
 Physical file deletion is asynchronous. Cleanup jobs are processed by the cleanup worker, which retries failed jobs and marks jobs as `FAILED` after the configured maximum number of attempts.
 
-## 12. Response and Error Handling
+## 13. Response and Error Handling
 
 Successful controller responses generally use a JSON envelope containing a `success` field and either `data` or a message.
 
@@ -326,7 +338,7 @@ Errors are passed through the centralized error handler.
 
 Clients should not assume that authentication alone grants permission to access a vault or file. Authorization is evaluated by the relevant application service.
 
-## 13. Implementation Notes
+## 14. Implementation Notes
 
 - The API is implemented using Express 5.
 - Request validation uses Zod schemas.
