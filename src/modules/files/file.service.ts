@@ -60,6 +60,8 @@ export async function uploadFileService(input: UploadFileInput) {
                 .select({
                     id: vaults.id,
                     encryptedDek: vaults.encryptedDek,
+                kekVersion: vaults.kekVersion,
+                    kekVersion: vaults.kekVersion,
                     status: vaults.status,
                     expiresAt: vaults.expiresAt,
                     expiryPolicy: vaults.expiryPolicy,
@@ -90,7 +92,7 @@ export async function uploadFileService(input: UploadFileInput) {
                 vault.id,
                 fileId,
                 input.file.buffer,
-                { encryptedDek: vault.encryptedDek },
+                { encryptedDek: vault.encryptedDek, kekVersion: vault.kekVersion },
             );
 
             storageKey = await storeEncryptedFile(encrypted.encryptedContent);
@@ -185,6 +187,7 @@ export async function downloadFileService(input: {
         },
         {
             encryptedDek: result.vault.encryptedDek,
+            kekVersion: result.vault.kekVersion,
         },
     );
 
