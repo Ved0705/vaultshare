@@ -59,6 +59,7 @@ export async function createVaultService(
         description: input.description ?? null,
         encryptedContent: encrypted.encryptedContent,
         encryptedDek: encrypted.encryptedDek,
+        kekVersion: encrypted.kekVersion,
         encryptionNonce: encrypted.encryptionNonce,
         encryptionTag: encrypted.encryptionTag,
         overallTtlSeconds: input.overallTtlSeconds,
@@ -104,6 +105,7 @@ export async function getVaultService(
     const content = decryptVaultContent(vault.id, {
         encryptedContent: vault.encryptedContent,
         encryptedDek: vault.encryptedDek,
+        kekVersion: vault.kekVersion,
         encryptionNonce: vault.encryptionNonce,
         encryptionTag: vault.encryptionTag,
     });
