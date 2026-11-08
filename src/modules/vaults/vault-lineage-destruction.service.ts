@@ -57,6 +57,12 @@ export async function applyVaultLifecycleService(
             return { processed: false, destroyedCount: 0 };
         }
 
+        // DESTROYED is terminal: a later revoke/expiry call must never
+        // downgrade the state of a vault whose payload has been erased.
+        if (root.status === "DESTROYED") {
+            return { processed: false, destroyedCount: 0 };
+        }
+
         const visited = new Set<string>([root.id]);
         const pending = [root.id];
 

@@ -316,6 +316,21 @@ async function run() {
         console.log("PASS: DESTROY expiry permanently destroys root and descendants");
         console.log("PASS: encrypted payloads cleared across all generations");
         console.log("PASS: cleanup jobs queued for root and descendants");
+
+        // A destroyed vault must not be changed back to REVOKED by a later
+        // lifecycle request. Its terminal state and erased payload are permanent.
+        await revokeVaultService(rootId, ownerId);
+        const [stillDestroyedRoot] = await db
+            .select()
+            .from(vaults)
+            .where(eq(vaults.id, rootId));
+        assert.ok(stillDestroyedRoot);
+        assert.equal(stillDestroyedRoot.status, "DESTROYED");
+        assert.equal(stillDestroyedRoot.encryptedContent, "");
+        assert.equal(stillDestroyedRoot.encryptedDek, "");
+        assert.equal(stillDestroyedRoot.encryptionNonce, "");
+        assert.equal(stillDestroyedRoot.encryptionTag, "");
+        console.log("PASS: DESTROYED is a terminal vault lifecycle state");
     } finally {
         // Remove only rows created by this test.
         await db.delete(cleanupJobs).where(
