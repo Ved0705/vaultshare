@@ -198,6 +198,17 @@ async function run() {
             assert.equal(first.successfulOpenCount, 1);
             assert.equal(first.remainingAccesses, 0);
 
+            const [exhaustedShare] = await db
+                .select()
+                .from(shares)
+                .where(eq(shares.id, fixture.shareId));
+            assert.ok(exhaustedShare);
+            assert.equal(
+                exhaustedShare.status,
+                "expired",
+                "Final permitted open should exhaust the share",
+            );
+
             await expectAppError(
                 openShareService({
                     shareCode: fixture.shareCode,
@@ -249,8 +260,10 @@ async function run() {
 
             assert.ok(share);
             assert.equal(share.successfulOpenCount, 1);
+            assert.equal(share.status, "expired");
 
             console.log("PASS: concurrent opens cannot exceed access limit");
+            console.log("PASS: final successful open transitions share to expired");
         }
 
         // 5. Expired post-open shares reject further access.
