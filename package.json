@@ -21,7 +21,8 @@
     "authorization:test": "tsx src/authorization/permissions-test.ts",
     "encryption:test": "tsx src/infrastructure/encryption/encryption-test.ts",
     "account-deletion-worker": "tsx src/modules/users/account-deletion.worker.ts",
-    "account-deletion:test": "tsx tests/account-deletion.integration-test.ts"
+    "account-deletion:test": "tsx tests/account-deletion.integration-test.ts",
+    "kek:rotate": "tsx src/infrastructure/encryption/rotate-kek.ts"
   },
   "keywords": [],
   "author": "",
