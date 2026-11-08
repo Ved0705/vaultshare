@@ -316,7 +316,7 @@ This document describes the current backend architecture and implemented lifecyc
 
 It does not imply that every planned module is complete or that the application is production-ready.
 
-Features such as comprehensive audit logging, account deletion, folder management, notification workflows, general rate limiting, renewal and access-count request workflows, backup-retention guarantees, and production infrastructure require separate implementation and verification.
+Account deletion, owner-scoped folder deletion, general rate limiting, owner-controlled share renewal, and additional-access-count extensions have implementation paths. Reader-submitted renewal/access-count request and owner-approval workflows are not implemented. Folder creation/listing workflows and comprehensive audit logging also remain separate product work.
 
 Physical cleanup jobs can reach a terminal `FAILED` state and require operational handling.
 
