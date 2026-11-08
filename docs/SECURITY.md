@@ -328,4 +328,4 @@ Notification events are written to a transactional outbox for share creation/rev
 
 ## 18. Configurable upload limit
 
-The single-file upload limit is configured through `MAX_FILE_SIZE_BYTES` (default 10 MiB, maximum 100 MiB). The upload middleware accepts arbitrary file types and validates the filename length; it does not implement a per-user or per-vault aggregate storage quota. A product-approved quota policy and enforcement remain outstanding.
+The single-file upload limit is configured through `MAX_FILE_SIZE_BYTES` (default 10 MiB, maximum 100 MiB). The upload middleware accepts arbitrary file types and validates the filename length; it enforces a per-vault cap of 100 active files and 100 MiB total active file bytes. A per-user aggregate quota is not implemented and requires an approved product policy.
