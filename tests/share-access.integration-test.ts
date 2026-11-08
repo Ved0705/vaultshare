@@ -312,6 +312,23 @@ async function run() {
                 passphrase: fixture.passphrase,
             });
 
+            await assert.rejects(
+                createShareService({
+                    vaultId: fixture.vaultId,
+                    ownerId,
+                    readerId: fixture.readerId,
+                    permissions: ["READ"],
+                    maxAccessCount: 5,
+                    postOpenTtlSeconds: 600,
+                    passphrase: fixture.passphrase,
+                }),
+                (error: unknown) => {
+                    assert.equal((error as { statusCode?: number }).statusCode, 409);
+                    assert.equal((error as { code?: string }).code, "SHARE_ACCESS_EXHAUSTED");
+                    return true;
+                },
+            );
+
             const renewed = await extendShareAccessService({
                 vaultId: fixture.vaultId,
                 shareId: fixture.shareId,
