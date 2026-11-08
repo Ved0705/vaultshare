@@ -89,5 +89,14 @@ jobs:
       - name: Security regression integration
         run: npm run security:integration:test
 
+      - name: Security middleware integration
+        run: npm run security:middleware:test
+
+      - name: Wait for local SMTP service
+        run: timeout 30 bash -c 'until nc -z 127.0.0.1 1025; do sleep 1; done'
+
+      - name: Notification outbox integration
+        run: npm run notifications:test
+
       - name: SMTP integration
         run: npm run email:test
