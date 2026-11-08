@@ -20,7 +20,14 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
         return;
     }
 
-    req.log.error({ err: error }, "Unhandled request error");
+    req.log.error(
+        {
+            errorName: error instanceof Error ? error.name : "UnknownError",
+            path: req.path,
+            method: req.method,
+        },
+        "Unhandled request error",
+    );
 
     res.status(500).json({
         success: false,
