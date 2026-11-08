@@ -54,6 +54,7 @@ The application expects the following configuration:
 |---|---|
 | `NODE_ENV` | Application environment |
 | `PORT` | HTTP server port |
+| `CORS_ORIGINS` | Comma-separated exact browser origins allowed to call the API |
 | `COGNITO_USERINFO_URL` | Cognito UserInfo endpoint |
 | `COGNITO_REGION` | Cognito AWS region |
 | `COGNITO_USER_POOL_ID` | Cognito User Pool identifier |
@@ -70,6 +71,7 @@ For the local Docker Compose configuration, use:
 ```env
 NODE_ENV=development
 PORT=3000
+CORS_ORIGINS=http://localhost:5173
 
 DATABASE_URL=postgresql://vaultshare:local_dev_password@localhost:5433/vaultshare
 
@@ -87,7 +89,7 @@ COGNITO_CLIENT_ID=
 VAULT_KEK_BASE64=
 ```
 
-Configure the Cognito values using your development User Pool and application client.
+Configure the Cognito values using your development User Pool and application client. Set CORS_ORIGINS to the exact frontend origin(s), separated by commas. Do not use a wildcard for authenticated browser clients. Production deployments must replace the localhost development origin with their trusted HTTPS frontend origins.
 
 Generate a 32-byte encryption key encoded in Base64:
 
