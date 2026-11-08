@@ -64,7 +64,10 @@ console.log("PASS: Unique DEK generation");
 
 // 6. Versioned KEK rewrapping preserves ciphertext and plaintext.
 if (env.VAULT_KEK_V2_BASE64) {
-    const rotatedDek = rewrapKekEncryptedDek(vaultId, encrypted.encryptedDek, 1, 2);
+    const v1Dek = encrypted.kekVersion === 1
+        ? encrypted.encryptedDek
+        : rewrapKekEncryptedDek(vaultId, encrypted.encryptedDek, encrypted.kekVersion, 1);
+    const rotatedDek = rewrapKekEncryptedDek(vaultId, v1Dek, 1, 2);
     assert.equal(decryptVaultContent(vaultId, { ...encrypted, encryptedDek: rotatedDek, kekVersion: 2 }), content);
     assert.throws(() => decryptVaultContent(vaultId, { ...encrypted, encryptedDek: rotatedDek, kekVersion: 1 }));
     console.log("PASS: KEK v1-to-v2 rewrap and version enforcement");
