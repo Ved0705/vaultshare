@@ -22,7 +22,7 @@ This checklist is a gate, not a declaration that the service is production-ready
 - [ ] Resolve and implement the separately approved reader-submitted renewal/additional-access request workflow.
 - [ ] Verify WRITE approval/rejection and multi-generation derived-copy destruction.
 - [ ] Verify account deletion with dedicated development Cognito identities.
-- [ ] Define and enforce aggregate storage quotas before public use.
+- [ ] Verify the existing per-vault 100-file / 100-MiB limits and decide whether a per-user aggregate quota is required before public use.
 - [ ] Build and test the in-app/web notification experience if it remains a V1 requirement.
 
 ## 3. Security and privacy
@@ -58,7 +58,7 @@ This checklist is a gate, not a declaration that the service is production-ready
 
 - Reader-submitted renewal/additional-access request workflow is not implemented; its post-open expiry semantics must be reconciled with the permanent-expiry rule.
 - In-app/web notification inbox is not implemented; current notifications are email-only.
-- Aggregate storage quotas are not implemented.
+- Per-vault file-count and byte quotas are implemented; a per-user aggregate quota is not.
 - Live Cognito account deletion has not been exercised by CI.
 - Production SMTP delivery is not verified by Mailpit tests.
 - Backup restore, retention and deletion propagation are documented but not operationally validated.
