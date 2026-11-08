@@ -23,6 +23,9 @@ export type VaultFile = { id: string; originalName: string; mimeType?: string; s
 export type ShareResult = { id: string; shareCode: string; vaultId: string; readerId: string; permissions: ("READ" | "WRITE")[]; status: string; maxAccessCount: number; successfulOpenCount: number; postOpenTtlSeconds: number | null; sharedAt: string };
 export type OpenedShare = { shareId: string; shareCode: string; permissions: ("READ" | "WRITE")[]; successfulOpenCount: number; remainingAccesses: number; content?: string; canRequestWrite: boolean; postOpenExpiresAt: string | null; vaultExpiresAt: string | null };
 export type SharedVaultFile = { id: string; originalName: string; mimeType?: string; sizeBytes?: number; createdAt?: string };
+export type OwnerAccessRequest = { id: string; requesterId: string; requesterEmail: string; message: string | null; status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED"; requestedAt: string; reviewedAt: string | null; responseMessage: string | null };
+export type OwnerWriteRequest = { id: string; shareId: string; requestedBy: string; status: "PENDING" | "APPROVED" | "REJECTED"; requestedAt: string; reviewedAt: string | null };
+export type WriteRequestDetail = { id: string; status: string; requestedBy: string; proposedContent: string; requestedAt: string; reviewedAt: string | null };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const session = await getSession();
@@ -88,6 +91,16 @@ export const api = {
     request<{ request: { id: string; status: string; requestedAt: string } }>(`/access-requests/vaults/${vaultId}`, { method: "POST", body: JSON.stringify({ message }) }),
   cancelAccessRequest: (requestId: string) =>
     request<{ request: { id: string; status: string; cancelledAt: string } }>(`/access-requests/${requestId}/cancel`, { method: "PATCH" }),
+  listOwnerAccessRequests: (vaultId: string) =>
+    request<{ requests: OwnerAccessRequest[] }>(`/vaults/${vaultId}/access-requests`),
+  reviewAccessRequest: (vaultId: string, requestId: string, decision: "APPROVE" | "REJECT", responseMessage?: string) =>
+    request<{ request: { id: string; status: string; reviewedAt: string | null; responseMessage: string | null } }>(`/vaults/${vaultId}/access-requests/${requestId}/review`, { method: "PATCH", body: JSON.stringify({ decision, responseMessage }) }),
+  listOwnerWriteRequests: (vaultId: string) =>
+    request<{ requests: OwnerWriteRequest[] }>(`/vaults/${vaultId}/write-requests?limit=100&offset=0`),
+  getOwnerWriteRequest: (vaultId: string, requestId: string) =>
+    request<WriteRequestDetail>(`/vaults/${vaultId}/write-requests/${requestId}`),
+  reviewWriteRequest: (vaultId: string, requestId: string, decision: "APPROVE" | "REJECT") =>
+    request<{ requestId: string; status: string; derivedVault?: { id: string; name: string }; reviewedAt: string }>(`/vaults/${vaultId}/write-requests/${requestId}/review`, { method: "POST", body: JSON.stringify({ decision }) }),
   createShare: (vaultId: string, input: { readerId: string; permissions: ("READ" | "WRITE")[]; maxAccessCount: number; postOpenTtlSeconds: number | null; passphrase: string }) =>
     request<ShareResult>(`/vaults/${vaultId}/shares`, { method: "POST", body: JSON.stringify(input) }),
   listVaults: () => request<Vault[]>("/vaults?limit=100&offset=0"),
