@@ -21,9 +21,7 @@ const app = express();
 
 app.disable("x-powered-by");
 
-app.use(helmet({
-    hsts: env.NODE_ENV === "production" ? undefined : false,
-}));
+app.use(helmet(env.NODE_ENV === "production" ? {} : { hsts: false }));
 const allowedOrigins = env.CORS_ORIGINS;
 app.use(cors({
     origin: (origin, callback) => {
