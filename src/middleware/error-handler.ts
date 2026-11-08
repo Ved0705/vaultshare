@@ -23,7 +23,6 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
     req.log.error(
         {
             errorName: error instanceof Error ? error.name : "UnknownError",
-            path: req.path,
             method: req.method,
         },
         "Unhandled request error",
