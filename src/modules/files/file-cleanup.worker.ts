@@ -35,7 +35,17 @@ async function deleteFileBlob(storageKey: string): Promise<void> {
     }
 }
 
-async function processFileBlob(fileId: string): Promise<void> {
+async function processFileBlob(
+    fileId: string,
+    storageKey: string | null,
+): Promise<void> {
+    // New jobs retain the storage key even if the file row is deleted.
+    if (storageKey) {
+        await deleteFileBlob(storageKey);
+        return;
+    }
+
+    // Backward compatibility for older cleanup jobs.
     const [file] = await db
         .select({
             id: files.id,
@@ -132,7 +142,7 @@ export async function processOneCleanupJob(): Promise<boolean> {
 
     try {
         if (job.resourceType === "FILE_BLOB") {
-            await processFileBlob(job.resourceId);
+            await processFileBlob(job.resourceId, job.storageKey);
         } else if (job.resourceType === "VAULT") {
             await processVaultCleanup(job.resourceId);
         } else {

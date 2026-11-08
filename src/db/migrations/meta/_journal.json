@@ -99,6 +99,20 @@
       "when": 1793896554047,
       "tag": "0013_fix_share_post_open_expiry_constraint",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793979180888,
+      "tag": "0014_add_user_account_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793979544175,
+      "tag": "0015_add_cleanup_job_storage_key",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,3 @@
-
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../shared/app-error.js";
 import { findUserByCognitoSub } from "../modules/users/user.repository.js";
@@ -26,6 +25,14 @@ export async function requireProvisionedUser(
                 401,
                 "USER_NOT_PROVISIONED",
                 "User account has not been provisioned.",
+            );
+        }
+
+        if (user.status !== "ACTIVE") {
+            throw new AppError(
+                403,
+                "ACCOUNT_UNAVAILABLE",
+                "This VaultShare account is unavailable.",
             );
         }
 

@@ -1,4 +1,3 @@
-
 import { AppError } from "../../shared/app-error.js";
 import { getCognitoUserInfo } from "../../infrastructure/cognito/user-info.js";
 import {
@@ -11,10 +10,8 @@ export async function getOrCreateUser(
     accessToken: string,
     expectedCognitoSub: string,
 ) {
-    // 1. Retrieve the authenticated user's Cognito profile.
     const cognitoUser = await getCognitoUserInfo(accessToken);
 
-    // 2. Ensure UserInfo belongs to the JWT-authenticated identity.
     if (cognitoUser.sub !== expectedCognitoSub) {
         throw new AppError(
             401,
@@ -23,7 +20,6 @@ export async function getOrCreateUser(
         );
     }
 
-    // 3. Require a verified email address.
     if (!cognitoUser.emailVerified) {
         throw new AppError(
             403,
@@ -32,11 +28,11 @@ export async function getOrCreateUser(
         );
     }
 
-    // 4. Find an existing VaultShare user.
     const existingUser = await findUserByCognitoSub(cognitoUser.sub);
 
     if (existingUser) {
-        // 5. Synchronize trusted Cognito profile information.
+        ensureAccountActive(existingUser.status);
+
         if (
             existingUser.email !== cognitoUser.email ||
             !existingUser.emailVerified
@@ -47,7 +43,6 @@ export async function getOrCreateUser(
         return existingUser;
     }
 
-    // 6. Create an internal VaultShare user on first login.
     try {
         return await createUser({
             cognitoSub: cognitoUser.sub,
@@ -55,7 +50,6 @@ export async function getOrCreateUser(
             emailVerified: cognitoUser.emailVerified,
         });
     } catch (error) {
-        // Handle a simultaneous first-login request safely.
         const isUniqueViolation =
             typeof error === "object" &&
             error !== null &&
@@ -71,10 +65,21 @@ export async function getOrCreateUser(
         );
 
         if (userAfterConflict) {
+            ensureAccountActive(userAfterConflict.status);
             return userAfterConflict;
         }
 
         throw error;
+    }
+}
+
+function ensureAccountActive(status: string) {
+    if (status !== "ACTIVE") {
+        throw new AppError(
+            403,
+            "ACCOUNT_UNAVAILABLE",
+            "This VaultShare account is unavailable.",
+        );
     }
 }
 

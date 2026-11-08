@@ -2,15 +2,20 @@ import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import { pinoHttp } from "pino-http";
+
 import { logger } from "./config/logger.js";
 import { authenticate } from "./middleware/auth.middleware.js";
 import { notFoundHandler } from "./middleware/not-found.js";
 import { errorHandler } from "./middleware/error-handler.js";
+
 import { getCurrentUser } from "./modules/users/user.controller.js";
+import { deleteCurrentAccount } from "./modules/users/account-deletion.controller.js";
+
 import vaultRoutes from "./modules/vaults/vault.routes.js";
 import shareAccessRoutes from "./modules/shares/share-access.routes.js";
 import accessRequestRoutes from "./modules/shares/access-request.routes.js";
 import sharedFileRoutes from "./modules/files/shared-file.routes.js";
+
 const app = express();
 
 app.disable("x-powered-by");
@@ -32,10 +37,18 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/api/v1/auth/me", authenticate, getCurrentUser);
+
+app.delete(
+    "/api/v1/users/me",
+    authenticate,
+    deleteCurrentAccount,
+);
+
 app.use("/api/v1/vaults", vaultRoutes);
 app.use("/api/v1/shares", shareAccessRoutes);
 app.use("/api/v1/shares", sharedFileRoutes);
 app.use("/api/v1/access-requests", accessRequestRoutes);
+
 app.use(notFoundHandler);
 app.use(errorHandler);
 

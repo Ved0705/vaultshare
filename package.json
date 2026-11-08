@@ -19,7 +19,9 @@
     "email:test": "tsx src/infrastructure/email/test-email.ts",
     "storage:test": "tsx tests/storage-test.ts",
     "authorization:test": "tsx src/authorization/permissions-test.ts",
-    "encryption:test": "tsx src/infrastructure/encryption/encryption-test.ts"
+    "encryption:test": "tsx src/infrastructure/encryption/encryption-test.ts",
+    "account-deletion-worker": "tsx src/modules/users/account-deletion.worker.ts",
+    "account-deletion:test": "tsx tests/account-deletion.integration-test.ts"
   },
   "keywords": [],
   "author": "",
@@ -36,6 +38,7 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1163.0",
     "argon2": "^0.45.1",
     "aws-jwt-verify": "^5.2.1",
     "cors": "^2.8.6",

@@ -289,6 +289,7 @@ export async function deleteFileService(input: {
         const [file] = await tx
             .select({
                 id: files.id,
+                storageKey: files.storageKey,
             })
             .from(files)
             .where(
@@ -318,6 +319,7 @@ export async function deleteFileService(input: {
             .values({
                 resourceType: "FILE_BLOB",
                 resourceId: file.id,
+                storageKey: file.storageKey,
             })
             .onConflictDoNothing();
     });

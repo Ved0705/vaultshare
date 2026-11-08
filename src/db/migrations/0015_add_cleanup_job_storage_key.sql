@@ -1,0 +1,1 @@
+ALTER TABLE "cleanup_jobs" ADD COLUMN "storage_key" varchar(64);

@@ -21,6 +21,7 @@ export const cleanupJobs = pgTable(
         resourceType: varchar("resource_type", { length: 30 }).notNull(),
 
         resourceId: uuid("resource_id").notNull(),
+        storageKey: varchar("storage_key", { length: 64 }),
 
         status: varchar("status", { length: 20 })
             .notNull()
