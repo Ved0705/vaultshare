@@ -8,12 +8,14 @@ on:
       - frontend/v1-dashboard
       - frontend/product-replacement
       - frontend/reader-workspace
+      - frontend/owner-approvals
   pull_request:
     branches:
       - master
       - frontend/v1-dashboard
       - frontend/product-replacement
       - frontend/reader-workspace
+      - frontend/owner-approvals
   workflow_dispatch:
 
 jobs:
