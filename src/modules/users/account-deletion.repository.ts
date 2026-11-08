@@ -142,7 +142,8 @@ export async function destroyAccountVaultData(
             })
             .where(inArray(vaults.id, vaultIds));
 
-        // Revoke shares attached to destroyed vaults.
+        // Revoke shares both on destroyed vaults and shares where the
+        // deleting account is the reader on someone else's vault.
         await tx
             .update(shares)
             .set({
@@ -152,12 +153,36 @@ export async function destroyAccountVaultData(
             })
             .where(
                 and(
-                    inArray(shares.vaultId, vaultIds),
+                    or(
+                        eq(shares.readerId, userId),
+                        inArray(shares.vaultId, vaultIds),
+                    ),
                     inArray(shares.status, ["active", "pending"]),
                 ),
             );
 
-        // Clear encrypted WRITE proposal payloads for all affected sources.
+        const affectedWriteRequests = or(
+            eq(writeRequests.requestedBy, userId),
+            inArray(writeRequests.sourceVaultId, vaultIds),
+            inArray(writeRequests.derivedVaultId, vaultIds),
+        );
+
+        // Reject pending proposals that can no longer be reviewed and clear
+        // every affected encrypted proposal before external identity deletion.
+        await tx
+            .update(writeRequests)
+            .set({
+                status: "REJECTED",
+                reviewedBy: userId,
+                reviewedAt: now,
+            })
+            .where(
+                and(
+                    affectedWriteRequests,
+                    eq(writeRequests.status, "PENDING"),
+                ),
+            );
+
         await tx
             .update(writeRequests)
             .set({
@@ -166,7 +191,7 @@ export async function destroyAccountVaultData(
                 encryptionNonce: "",
                 encryptionTag: "",
             })
-            .where(inArray(writeRequests.sourceVaultId, vaultIds));
+            .where(affectedWriteRequests);
     });
 }
 
