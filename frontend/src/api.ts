@@ -18,6 +18,9 @@ export type Vault = {
 
 export type Folder = { id: string; name: string; createdAt?: string };
 export type AuditEvent = { id: string; action: string; method: string; route: string; statusCode: number; createdAt: string };
+export type VaultDetail = Vault & { content: string };
+export type VaultFile = { id: string; originalName: string; mimeType?: string; sizeBytes?: number; createdAt?: string };
+export type ShareResult = { id: string; shareCode: string; vaultId: string; readerId: string; permissions: ("READ" | "WRITE")[]; status: string; maxAccessCount: number; successfulOpenCount: number; postOpenTtlSeconds: number | null; sharedAt: string };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const session = await getSession();
@@ -39,6 +42,32 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   me: () => request<{ id: string; email: string; emailVerified: boolean }>("/auth/me"),
+  getVault: (id: string) => request<VaultDetail>(`/vaults/${id}`),
+  updateVault: (id: string, input: { name?: string; description?: string | null; folderId?: string | null }) =>
+    request<Vault>(`/vaults/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  listFiles: (vaultId: string) => request<{ files: VaultFile[] }>(`/vaults/${vaultId}/files`),
+  uploadFile: async (vaultId: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request<VaultFile>(`/vaults/${vaultId}/files`, { method: "POST", body });
+  },
+  deleteFile: (vaultId: string, fileId: string) =>
+    request<void>(`/vaults/${vaultId}/files/${fileId}`, { method: "DELETE" }),
+  downloadFile: async (vaultId: string, fileId: string) => {
+    const session = await getSession();
+    const token = session?.getAccessToken().getJwtToken();
+    if (!token) throw new Error("Your session has expired. Please sign in again.");
+    const response = await fetch(`${API_BASE}/vaults/${vaultId}/files/${fileId}/download`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.error?.message || `Download failed (${response.status})`);
+    }
+    return response.blob();
+  },
+  generateSharePassphrase: (vaultId: string) =>
+    request<{ passphrase: string; entropyBits: number }>(`/vaults/${vaultId}/shares/passphrase`, { method: "POST" }),
+  createShare: (vaultId: string, input: { readerId: string; permissions: ("READ" | "WRITE")[]; maxAccessCount: number; postOpenTtlSeconds: number | null; passphrase: string }) =>
+    request<ShareResult>(`/vaults/${vaultId}/shares`, { method: "POST", body: JSON.stringify(input) }),
   listVaults: () => request<Vault[]>("/vaults?limit=100&offset=0"),
   createVault: (input: { name: string; description?: string; content: string; overallTtlSeconds: number; expiryPolicy: "DESTROY" | "REVOKE_ACCESS"; folderId: string | null }) =>
     request<Vault>("/vaults", { method: "POST", body: JSON.stringify(input) }),
