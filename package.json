@@ -31,7 +31,8 @@
     "security:integration:test": "tsx tests/security-regression.integration-test.ts",
     "notifications:worker": "tsx src/infrastructure/email/notification.worker.ts",
     "notifications:test": "tsx tests/notification-outbox.integration-test.ts",
-    "access-request-notifications:test": "tsx tests/access-request-notification.integration-test.ts"
+    "access-request-notifications:test": "tsx tests/access-request-notification.integration-test.ts",
+    "share-passphrase:test": "tsx tests/share-passphrase.integration-test.ts"
   },
   "keywords": [],
   "author": "",
