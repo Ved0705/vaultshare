@@ -81,16 +81,25 @@ Decryption must fail when the ciphertext or authentication data is invalid. Auth
 
 A derived vault created after approval of a WRITE request receives a fresh encryption context and independent DEK. It must not reuse the source vault's DEK.
 
-### 4.4 Key-management limitations
+### 4.4 Versioned KEK envelopes and rotation
 
-The KEK is outside the vault database, but environment-based configuration alone does not establish a complete production key-management system.
+Vault and WRITE-request records carry a `kek_version`. The existing `VAULT_KEK_BASE64` remains KEK version 1 for backward compatibility. Version 2 is configured separately using `VAULT_KEK_V2_BASE64`; `VAULT_KEK_CURRENT_VERSION` controls which key encrypts newly created vault and WRITE-request DEKs.
 
-The following operational controls require separate verification before production:
-- Secure KEK provisioning and access restrictions.
-- KEK rotation and re-encryption procedures.
-- Backup and recovery of key material.
-- Emergency response to KEK compromise.
-- Prevention of key exposure through logs, diagnostics, or deployment configuration.
+The rotation utility rewraps the existing DEKs in both `vaults` and `write_requests` inside one PostgreSQL transaction. It does not decrypt/re-encrypt vault content. File DEKs are wrapped by their parent vault DEK, so they do not need individual rewrapping when the vault DEK's KEK envelope changes. A dry run is the default; `--apply` is required to commit.
+
+Rotation procedure:
+1. Take and verify a restorable database backup.
+2. Stop the API, expiry scheduler, cleanup worker, and any other process that can write vault or WRITE-request records.
+3. Keep the existing key in `VAULT_KEK_BASE64`; add a newly generated independent 32-byte key in `VAULT_KEK_V2_BASE64`.
+4. Set `VAULT_KEK_CURRENT_VERSION=2` and apply database migrations.
+5. Run `npm run kek:rotate` and confirm the dry-run counts.
+6. Run `npm run kek:rotate -- --apply` to atomically rewrap all v1 envelopes.
+7. Confirm no v1 records remain in either table, then run typecheck, build, and encryption/file tests before restarting services.
+8. Retain KEK v1 in protected configuration until backup/recovery validation and a separately approved retirement procedure are complete. Never delete the old key automatically.
+
+If rotation fails, the transaction is rolled back. Keep both keys configured and investigate before retrying. Never replace the v1 key with the v2 key or remove v1 while any v1 envelope or restorable backup may still require it.
+
+Environment-based key storage is a development-stage mechanism, not a complete production KMS/HSM design. Secure KEK provisioning, access restrictions, backup and recovery, compromise response, and protection against deployment-secret leakage still require operational verification.
 
 ## 5. Passphrase Security
 
