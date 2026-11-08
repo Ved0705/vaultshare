@@ -275,7 +275,7 @@ When a source vault is revoked or expires, pending WRITE requests across its lin
 
 ## 12. Background Processes
 
-VaultShare uses two independently started background processes.
+VaultShare uses three independently started background processes.
 
 | Process | Responsibility |
 |---|---|
@@ -317,7 +317,7 @@ This document describes the current backend architecture and implemented lifecyc
 
 It does not imply that every planned module is complete or that the application is production-ready.
 
-Account deletion, owner-scoped folder deletion, general rate limiting, owner-controlled share renewal, and additional-access-count extensions have implementation paths. Reader-submitted renewal/access-count request and owner-approval workflows are not implemented. Folder creation/listing workflows and comprehensive audit logging also remain separate product work.
+Account deletion, owner-scoped folder CRUD, global and endpoint-specific rate limits, owner-controlled share extension, audit capture/history, and notification delivery are implemented. Reader-submitted renewal/access-count request and owner-approval workflows remain unimplemented. In-app/web notification inbox functionality is also not implemented; the current notification worker sends email only. Aggregate storage quotas are not configured.
 
 Physical cleanup jobs can reach a terminal `FAILED` state and require operational handling.
 
