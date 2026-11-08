@@ -17,12 +17,18 @@ function isMissingFile(error: unknown): boolean {
     );
 }
 
-function getSafeErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-        return error.message.slice(0, 1000);
+function getSafeErrorCode(error: unknown): string {
+    if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        typeof error.code === "string" &&
+        /^[A-Z0-9_]{1,40}$/.test(error.code)
+    ) {
+        return error.code;
     }
 
-    return "Unknown cleanup error.";
+    return "CLEANUP_ERROR";
 }
 
 async function deleteFileBlob(storageKey: string): Promise<void> {
@@ -167,6 +173,13 @@ export async function processOneCleanupJob(): Promise<boolean> {
             );
 
     } catch (error) {
+        const errorCode = getSafeErrorCode(error);
+        console.error("Cleanup job failed.", {
+            jobId: job.id,
+            resourceType: job.resourceType,
+            errorCode,
+        });
+
         const failedPermanently = job.attempts >= job.maxAttempts;
 
         const retryDelayMs = Math.min(
@@ -180,7 +193,7 @@ export async function processOneCleanupJob(): Promise<boolean> {
                 status: failedPermanently ? "FAILED" : "PENDING",
                 lockedAt: null,
                 runAfter: new Date(Date.now() + retryDelayMs),
-                lastError: getSafeErrorMessage(error),
+                lastError: errorCode,
                 updatedAt: new Date(),
             })
             .where(
@@ -206,7 +219,9 @@ async function startCleanupWorker() {
                 await new Promise((resolve) => setTimeout(resolve, 10_000));
             }
         } catch (error) {
-            console.error("Cleanup worker error:", error);
+            console.error("Cleanup worker error.", {
+                errorCode: getSafeErrorCode(error),
+            });
             await new Promise((resolve) => setTimeout(resolve, 5_000));
         }
     }
