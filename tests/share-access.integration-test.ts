@@ -301,9 +301,12 @@ async function run() {
         // 6. Owners can grant additional opens after count exhaustion,
         // but cannot renew after the reader's post-open TTL has expired.
         {
-            const fixture = await createFixture({ maxAccessCount: 1 });
+            const fixture = await createFixture({
+                maxAccessCount: 1,
+                postOpenTtlSeconds: 600,
+            });
 
-            await openShareService({
+            const firstOpen = await openShareService({
                 shareCode: fixture.shareCode,
                 readerId: fixture.readerId,
                 passphrase: fixture.passphrase,
@@ -314,10 +317,12 @@ async function run() {
                 shareId: fixture.shareId,
                 ownerId,
                 additionalAccesses: 2,
+                extendPostOpenBySeconds: 120,
             });
 
             assert.equal(renewed.status, "active");
             assert.equal(renewed.maxAccessCount, 3);
+            assert.equal(renewed.postOpenExpiresAt?.getTime(), firstOpen.postOpenExpiresAt!.getTime() + 120_000);
 
             const secondOpen = await openShareService({
                 shareCode: fixture.shareCode,
