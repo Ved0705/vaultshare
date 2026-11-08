@@ -227,6 +227,13 @@ npm run write-race:test
 npm run share-isolation:test
 npx tsx tests/share-access.integration-test.ts
 npm run account-deletion:test
+npm run folder-deletion:test
+npm run share-passphrase:test
+npm run audit-history:test
+npm run security:middleware:test
+npm run security:integration:test
+npm run notifications:test
+npm run access-request-notifications:test
 ```
 
 Some integration tests require a configured local PostgreSQL database and environment variables.
@@ -234,8 +241,6 @@ Some integration tests require a configured local PostgreSQL database and enviro
 ## Project Status
 
 VaultShare is under active development.
-
-The repository contains backend implementations for its core encryption, authentication, sharing, vault lifecycle, file-storage, write-request, and account-deletion workflows.
 
 The backend implements core authentication, encrypted vaults/files, sharing, folders, access and WRITE requests, lifecycle/lineage, account deletion, audit capture/history, and metadata-only notifications. The project is not production-ready: see the PRD compliance matrix for implemented, partial, and blocked acceptance criteria.
 
@@ -248,6 +253,7 @@ The backend implements core authentication, encrypted vaults/files, sharing, fol
 - [Security](docs/SECURITY.md)
 - [Setup & Operations](docs/SETUP.md)
 - [Backup & Recovery](docs/BACKUP-RECOVERY.md)
+- [Release Readiness Checklist](docs/RELEASE-CHECKLIST.md)
 
 ## License
 
