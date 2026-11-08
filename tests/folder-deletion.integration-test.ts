@@ -17,6 +17,7 @@ const ownerId = randomUUID();
 const otherOwnerId = randomUUID();
 const folderId = randomUUID();
 const vaultId = randomUUID();
+let createdFolderId: string | undefined;
 
 async function run() {
     try {
@@ -34,6 +35,7 @@ async function run() {
         });
 
         const created = await createFolderService(ownerId, "Initial folder");
+        createdFolderId = created.id;
         assert.equal(created.name, "Initial folder");
         const listed = await listFoldersService(ownerId);
         assert.ok(listed.some((folder) => folder.id === created.id));
@@ -92,6 +94,7 @@ async function run() {
     } finally {
         await db.delete(vaults).where(eq(vaults.id, vaultId));
         await db.delete(folders).where(eq(folders.id, folderId));
+        if (createdFolderId) await db.delete(folders).where(eq(folders.id, createdFolderId));
         await db.delete(users).where(eq(users.id, ownerId));
         await db.delete(users).where(eq(users.id, otherOwnerId));
         await pool.end();
