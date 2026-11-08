@@ -7,7 +7,8 @@ async function main() {
     try {
         const [count] = await db.select({ count: sql<number>`count(*)::int` })
             .from(auditEvents).where(lt(auditEvents.createdAt, cutoff));
-        process.stdout.write(`Audit events older than 365 days: ${count.count}\n`);
+        const expiredCount = count?.count ?? 0;
+        process.stdout.write(`Audit events older than 365 days: ${expiredCount}\n`);
         if (process.argv.includes("--apply")) {
             const deleted = await db.delete(auditEvents)
                 .where(lt(auditEvents.createdAt, cutoff))

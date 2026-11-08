@@ -4,7 +4,7 @@ import { cleanupJobs } from "../../db/schema/cleanup-jobs.js";
 
 async function main() {
     try {
-        const [summary] = await db
+        const [row] = await db
             .select({
                 pending: sql<number>`count(*) filter (where status = 'PENDING')::int`,
                 processing: sql<number>`count(*) filter (where status = 'PROCESSING')::int`,
@@ -13,6 +13,9 @@ async function main() {
                 oldestPendingAt: sql<Date | null>`min(created_at) filter (where status = 'PENDING')`,
             })
             .from(cleanupJobs);
+        const summary = row ?? {
+            pending: 0, processing: 0, failed: 0, completed: 0, oldestPendingAt: null,
+        };
 
         const oldestPendingAgeMinutes = summary.oldestPendingAt
             ? Math.floor((Date.now() - new Date(summary.oldestPendingAt).getTime()) / 60_000)
