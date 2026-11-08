@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Pool } from "pg";
-import { env } from "../config/env.js";
+import { env } from "../../config/env.js";
 import { rewrapKekEncryptedDek } from "./encryption.service.js";
 
 const APPLY = process.argv.includes("--apply");
