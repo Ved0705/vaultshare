@@ -115,7 +115,8 @@ export default function App() {
         <nav className="side-nav">
           <button className={view === "vaults" ? "nav-item active" : "nav-item"} onClick={() => setView("vaults")}><LayoutDashboard size={17} /> My vaults <span className="nav-count">{vaults.length}</span></button>
           <button className={view === "folders" ? "nav-item active" : "nav-item"} onClick={() => setView("folders")}><Folder size={17} /> Folders <span className="nav-count">{folders.length}</span></button>
-          <button className={view === "activity" ? "nav-item active" : "nav-item"} onClick={() => setView("activity")}><Activity size={17} /> Activity</button>\n          <button className={view === "reader" ? "nav-item active" : "nav-item"} onClick={() => setView("reader")}><BookOpen size={17} /> Shared with me</button>
+          <button className={view === "activity" ? "nav-item active" : "nav-item"} onClick={() => setView("activity")}><Activity size={17} /> Activity</button>
+          <button className={view === "reader" ? "nav-item active" : "nav-item"} onClick={() => setView("reader")}><BookOpen size={17} /> Shared with me</button>
         </nav>
         <div className="sidebar-bottom">
           <div className="security-note"><span className="security-icon"><ShieldCheck size={17} /></span><div><strong>Private by design</strong><p>Your vaults are encrypted at rest.</p></div></div>
