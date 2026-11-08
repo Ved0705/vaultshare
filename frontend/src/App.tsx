@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowRight, Archive, Check, CircleHelp, Clock3, Folder, FolderPlus,
   KeyRound, LayoutDashboard, LoaderCircle, LockKeyhole, LogOut, MoreHorizontal,
-  Plus, Search, ShieldCheck, ShieldEllipsis, X, Eye, FileText, Upload, Download, Trash2, Share2, Save, Copy,
+  Plus, Search, ShieldCheck, ShieldEllipsis, X, Eye, FileText, Upload, Download, Trash2, Share2, Save, Copy, BookOpen,
 } from "lucide-react";
 import { api, type AuditEvent, type Folder as VaultFolder, type Vault } from "./api";
 import { confirmSignUp, getSession, signIn, signOut, signUp } from "./auth";
 
-type View = "vaults" | "folders" | "activity";
+type View = "vaults" | "folders" | "activity" | "reader";
 type AuthMode = "signin" | "signup" | "confirm";
 
 function readableError(error: unknown) {
@@ -114,7 +114,7 @@ export default function App() {
         <nav className="side-nav">
           <button className={view === "vaults" ? "nav-item active" : "nav-item"} onClick={() => setView("vaults")}><LayoutDashboard size={17} /> My vaults <span className="nav-count">{vaults.length}</span></button>
           <button className={view === "folders" ? "nav-item active" : "nav-item"} onClick={() => setView("folders")}><Folder size={17} /> Folders <span className="nav-count">{folders.length}</span></button>
-          <button className={view === "activity" ? "nav-item active" : "nav-item"} onClick={() => setView("activity")}><Activity size={17} /> Activity</button>
+          <button className={view === "activity" ? "nav-item active" : "nav-item"} onClick={() => setView("activity")}><Activity size={17} /> Activity</button>\n          <button className={view === "reader" ? "nav-item active" : "nav-item"} onClick={() => setView("reader")}><BookOpen size={17} /> Shared with me</button>
         </nav>
         <div className="sidebar-bottom">
           <div className="security-note"><span className="security-icon"><ShieldCheck size={17} /></span><div><strong>Private by design</strong><p>Your vaults are encrypted at rest.</p></div></div>
@@ -124,7 +124,7 @@ export default function App() {
 
       <main className="main-area">
         <header className="topbar">
-          <div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>{view === "vaults" ? "My vaults" : view === "folders" ? "Folders" : "Activity"}</strong></div>
+          <div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>{view === "vaults" ? "My vaults" : view === "folders" ? "Folders" : view === "reader" ? "Shared with me" : "Activity"}</strong></div>
           <div className="topbar-right"><span className="secure-indicator"><span /> End-to-end protected</span><button className="help-button" title="Help"><CircleHelp size={17} /></button></div>
         </header>
 
@@ -146,7 +146,7 @@ export default function App() {
             {loading ? <div className="loading-state"><LoaderCircle className="spin" size={22} /> Loading your vaults…</div> : filteredVaults.length === 0 ? <div className="empty-state"><div className="empty-art"><LockKeyhole size={25} /></div><h3>{query ? "No vaults found" : "Your first vault starts here"}</h3><p>{query ? "Try a different search term." : "Create a private space for a note, credential, or file you need to share securely."}</p>{!query && <button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Create your first vault</button>}</div> : <div className="vault-grid">{filteredVaults.map((vault) => <article className="vault-card" key={vault.id}><div className="vault-card-top"><div className="vault-file-icon"><KeyRound size={19} /></div><div className={`status-pill ${vault.status.toLowerCase()}`}><span />{vault.status.replaceAll("_", " ")}</div><div className="card-menu"><button className="icon-button" title="Vault actions" onClick={() => handleVaultAction(vault, "revoke")} disabled={busyId === vault.id}><MoreHorizontal size={18} /></button></div></div><h3>{vault.name}</h3><p className="vault-description">{vault.description || "Private encrypted content"}</p><div className="vault-meta"><span><Clock3 size={14} /> {ttlLabel(vault.overallTtlSeconds)}</span><span><Folder size={14} /> {folders.find((folder) => folder.id === vault.folderId)?.name || "Unfiled"}</span></div><div className="vault-card-footer"><span>Created {formatDate(vault.createdAt)}</span><div className="vault-card-actions"><button className="text-action" onClick={() => setSelectedVault(vault)}><Eye size={14} /> Open</button><button className="text-action" disabled={busyId === vault.id} onClick={() => handleVaultAction(vault, "delete")}>Destroy <ArrowRight size={14} /></button></div></div></article>)}</div>}
           </>}
 
-          {view === "folders" && <><section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> ORGANIZE YOUR SPACE</div><h1>Folders, <em>in order.</em></h1><p className="page-subtitle">Group your vaults without changing their access or expiry settings.</p></div><button className="primary-button" onClick={() => setShowFolder(true)}><Plus size={17} /> New folder</button></section><div className="folder-grid">{folders.map((folder) => <div className="folder-card" key={folder.id}><div className="folder-illustration"><Folder size={23} /></div><div><h3>{folder.name}</h3><p>{vaults.filter((vault) => vault.folderId === folder.id).length} vaults</p></div></div>)}</div>{folders.length === 0 && <div className="empty-state"><div className="empty-art"><Folder size={25} /></div><h3>No folders yet</h3><p>Create folders to keep your vaults organized.</p><button className="primary-button" onClick={() => setShowFolder(true)}><Plus size={17} /> Create a folder</button></div>}</>}
+          {view === "reader" && <ReaderWorkspace />}\n\n          {view === "folders" && <><section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> ORGANIZE YOUR SPACE</div><h1>Folders, <em>in order.</em></h1><p className="page-subtitle">Group your vaults without changing their access or expiry settings.</p></div><button className="primary-button" onClick={() => setShowFolder(true)}><Plus size={17} /> New folder</button></section><div className="folder-grid">{folders.map((folder) => <div className="folder-card" key={folder.id}><div className="folder-illustration"><Folder size={23} /></div><div><h3>{folder.name}</h3><p>{vaults.filter((vault) => vault.folderId === folder.id).length} vaults</p></div></div>)}</div>{folders.length === 0 && <div className="empty-state"><div className="empty-art"><Folder size={25} /></div><h3>No folders yet</h3><p>Create folders to keep your vaults organized.</p><button className="primary-button" onClick={() => setShowFolder(true)}><Plus size={17} /> Create a folder</button></div>}</>}
 
           {view === "activity" && <><section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> ACCOUNT HISTORY</div><h1>A clear <em>paper trail.</em></h1><p className="page-subtitle">A personal view of recent activity in your VaultShare account.</p></div></section><div className="activity-panel">{events.length === 0 ? <div className="empty-state compact"><div className="empty-art"><Activity size={24} /></div><h3>No activity yet</h3><p>Your recent account events will appear here.</p></div> : events.map((event) => <div className="activity-row" key={event.id}><div className="activity-dot"><Activity size={15} /></div><div className="activity-main"><strong>{event.action.replaceAll("_", " ").toLowerCase()}</strong><span>{event.method} · {event.route}</span></div><span className={event.statusCode >= 400 ? "http-code failed" : "http-code"}>{event.statusCode}</span><time>{formatDate(event.createdAt)}</time></div>)}</div></>}
         </div>
@@ -160,6 +160,80 @@ export default function App() {
   );
 }
 
+
+
+function ReaderWorkspace() {
+  const [shareCode, setShareCode] = useState("");
+  const [passphrase, setPassphrase] = useState("");
+  const [opened, setOpened] = useState<import("./api").OpenedShare | null>(null);
+  const [files, setFiles] = useState<import("./api").SharedVaultFile[]>([]);
+  const [proposedContent, setProposedContent] = useState("");
+  const [accessVaultId, setAccessVaultId] = useState("");
+  const [accessMessage, setAccessMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function open(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice(""); setFiles([]); setOpened(null);
+    try { const result = await api.openShare(shareCode.trim(), passphrase); setOpened(result); setNotice("Share opened. Your access limits and expiry are enforced by the server."); }
+    catch (err) { setError(readableError(err)); }
+    finally { setBusy(false); }
+  }
+  async function loadFiles() {
+    setBusy(true); setError("");
+    try { const result = await api.listSharedFiles(shareCode.trim(), passphrase); setFiles(result.files ?? []); }
+    catch (err) { setError(readableError(err)); }
+    finally { setBusy(false); }
+  }
+  async function download(file: import("./api").SharedVaultFile) {
+    setBusy(true); setError("");
+    try { const blob = await api.downloadSharedFile(shareCode.trim(), file.id, passphrase); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = file.originalName || "download"; anchor.click(); URL.revokeObjectURL(url); }
+    catch (err) { setError(readableError(err)); }
+    finally { setBusy(false); }
+  }
+  async function submitWrite(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    try { const result = await api.createWriteRequest(shareCode.trim(), { proposedContent, passphrase }); setNotice(`Write proposal submitted (${result.status}). The vault owner must approve it before any change takes effect.`); setProposedContent(""); }
+    catch (err) { setError(readableError(err)); }
+    finally { setBusy(false); }
+  }
+  async function requestAccess(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    try { const result = await api.requestVaultAccess(accessVaultId.trim(), accessMessage.trim() || undefined); setNotice(`Access request submitted (${result.request.status}). The vault owner will be notified.`); setAccessVaultId(""); setAccessMessage(""); }
+    catch (err) { setError(readableError(err)); }
+    finally { setBusy(false); }
+  }
+
+  return <><section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> SECURE READER SPACE</div><h1>Shared with <em>you.</em></h1><p className="page-subtitle">Open a vault using the share code and passphrase provided by its owner.</p></div></section>
+    {error && <div className="form-error reader-alert">{error}</div>}{notice && <div className="form-notice reader-alert">{notice}</div>}
+    <div className="reader-grid">
+      <section className="reader-panel"><div className="reader-panel-title"><KeyRound size={17}/><h2>Open a shared vault</h2></div>
+        <form className="modal-form reader-form" onSubmit={open}>
+          <label>Share code<input required value={shareCode} onChange={e => setShareCode(e.target.value)} placeholder="Paste the 32-character share code" autoComplete="off" /></label>
+          <label>Share passphrase<input required type="password" maxLength={128} value={passphrase} onChange={e => setPassphrase(e.target.value)} placeholder="Enter the passphrase" autoComplete="off" /></label>
+          <button className="primary-button" disabled={busy || !shareCode.trim() || !passphrase}>{busy ? "Opening…" : "Verify & open share"} <ArrowRight size={15}/></button>
+        </form>
+      </section>
+      <section className="reader-panel request-panel"><div className="reader-panel-title"><ShieldCheck size={17}/><h2>Request access</h2></div><p className="muted-note">If you have a vault ID but no active share, you can ask its owner for READ access.</p>
+        <form className="modal-form reader-form" onSubmit={requestAccess}>
+          <label>Vault ID<input required value={accessVaultId} onChange={e => setAccessVaultId(e.target.value)} placeholder="Vault UUID" /></label>
+          <label>Message <span className="optional">OPTIONAL</span><textarea rows={2} maxLength={500} value={accessMessage} onChange={e => setAccessMessage(e.target.value)} placeholder="Tell the owner why you need access" /></label>
+          <button className="secondary-button" disabled={busy || !accessVaultId.trim()}>Send access request</button>
+        </form>
+      </section>
+    </div>
+    {opened && <section className="reader-opened">
+      <div className="reader-opened-head"><div><div className="eyebrow"><span className="eyebrow-dot"/> VERIFIED SHARE</div><h2>Shared vault content</h2></div><span className="status-pill active"><span/> OPENED</span></div>
+      <div className="reader-stats"><div><span>Permissions</span><strong>{opened.permissions.join(" + ")}</strong></div><div><span>Successful opens</span><strong>{opened.successfulOpenCount}</strong></div><div><span>Remaining opens</span><strong>{opened.remainingAccesses}</strong></div><div><span>Reader expiry</span><strong>{formatDate(opened.postOpenExpiresAt)}</strong></div></div>
+      {opened.permissions.includes("READ") ? <><h3>Protected content</h3><pre className="vault-content-preview">{opened.content ?? "No readable content was returned."}</pre>
+        <div className="section-heading-inline reader-files-heading"><h3>Shared files</h3><button className="secondary-button" onClick={() => void loadFiles()} disabled={busy}><FileText size={15}/> Load shared files</button></div>
+        {files.map(file => <div className="file-row" key={file.id}><span><FileText size={16}/>{file.originalName}</span><button className="icon-button" title="Download shared file" disabled={busy} onClick={() => void download(file)}><Download size={15}/></button></div>)}
+      </> : <p className="muted-note">This is a WRITE-only share. Original vault content is not disclosed to you.</p>}
+      {opened.permissions.includes("WRITE") && <form className="modal-form write-proposal" onSubmit={submitWrite}><h3>Propose a change</h3><p className="muted-note">Your proposal is encrypted and sent to the owner for approval. It does not modify the original vault unless approved.</p><label>Proposed content<textarea required rows={6} maxLength={900000} value={proposedContent} onChange={e => setProposedContent(e.target.value)} placeholder="Enter the complete proposed replacement content…" /></label><button className="primary-button" disabled={busy || !proposedContent.trim()}>Submit for owner approval</button></form>}
+    </section>}
+  </>;
+}
 
 function VaultDetailModal({ vault, folders, onClose, onChanged }: { vault: Vault; folders: VaultFolder[]; onClose: () => void; onChanged: () => Promise<void> }) {
   const [detail, setDetail] = useState<import("./api").VaultDetail | null>(null);
