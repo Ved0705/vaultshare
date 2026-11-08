@@ -9,6 +9,7 @@ import { vaults } from "../src/db/schema/vaults.js";
 import { shares } from "../src/db/schema/shares.js";
 import { writeRequests } from "../src/db/schema/write-requests.js";
 import { vaultLineage } from "../src/db/schema/vault-lineage.js";
+import { notificationOutbox } from "../src/db/schema/notification-outbox.js";
 import { revokeShareService } from "../src/modules/shares/share-revocation.service.js";
 
 async function main() {
@@ -173,6 +174,20 @@ async function main() {
             .where(eq(vaultLineage.derivedVaultId, derivedVaultId));
 
         assert.ok(lineage, "Individual share revocation must preserve lineage");
+
+        const revocationNotifications = await db
+            .select()
+            .from(notificationOutbox)
+            .where(eq(notificationOutbox.recipientUserId, readerOneId));
+        assert.equal(revocationNotifications.length, 1);
+        assert.equal(revocationNotifications[0].eventType, "SHARE_REVOKED");
+        const otherReaderNotifications = await db
+            .select()
+            .from(notificationOutbox)
+            .where(eq(notificationOutbox.recipientUserId, readerTwoId));
+        assert.equal(otherReaderNotifications.length, 0);
+
+        console.log("PASS: only the revoked reader receives a revocation notification");
 
         console.log("PASS: selected reader share is revoked.");
         console.log("PASS: other reader share remains active.");

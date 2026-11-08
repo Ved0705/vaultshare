@@ -10,6 +10,7 @@ import { shares } from "../src/db/schema/shares.js";
 import { writeRequests } from "../src/db/schema/write-requests.js";
 import { vaultLineage } from "../src/db/schema/vault-lineage.js";
 import { cleanupJobs } from "../src/db/schema/cleanup-jobs.js";
+import { notificationOutbox } from "../src/db/schema/notification-outbox.js";
 
 import { encryptVaultContent } from "../src/infrastructure/encryption/encryption.service.js";
 import { reviewWriteRequestService } from "../src/modules/shares/write-request-review.service.js";
@@ -151,6 +152,19 @@ async function runTrial(trial: number): Promise<void> {
             assert.equal(request.status, "REJECTED");
             assert.equal(request.derivedVaultId, null);
         }
+
+        const reviewNotifications = await db
+            .select()
+            .from(notificationOutbox)
+            .where(and(
+                eq(notificationOutbox.recipientUserId, readerId),
+                eq(notificationOutbox.eventType, "WRITE_REQUEST_REVIEWED"),
+            ));
+        assert.equal(
+            reviewNotifications.length,
+            request.status === "APPROVED" ? 1 : 0,
+            "only a successfully approved WRITE request should enqueue a review notification",
+        );
 
         console.log(`PASS: concurrency trial ${trial}`);
     } finally {

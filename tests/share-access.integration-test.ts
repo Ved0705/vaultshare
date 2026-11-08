@@ -8,8 +8,11 @@ import { users } from "../src/db/schema/users.js";
 import { vaults } from "../src/db/schema/vaults.js";
 import { shares } from "../src/db/schema/shares.js";
 import { passphraseAttempts } from "../src/db/schema/passphrase-attempts.js";
+import { writeRequests } from "../src/db/schema/write-requests.js";
+import { notificationOutbox } from "../src/db/schema/notification-outbox.js";
 
 import { createShareService } from "../src/modules/shares/share.service.js";
+import { createWriteRequestService } from "../src/modules/shares/write-request.service.js";
 import { openShareService } from "../src/modules/shares/share-access.service.js";
 import { extendShareAccessService } from "../src/modules/shares/share-extension.service.js";
 import { updateVaultService } from "../src/modules/vaults/vault.service.js";
@@ -65,6 +68,16 @@ async function createFixture(options?: {
     });
 
     shareIds.push(share.id);
+
+    const [shareNotification] = await db
+        .select()
+        .from(notificationOutbox)
+        .where(and(
+            eq(notificationOutbox.recipientUserId, readerId),
+            eq(notificationOutbox.eventType, "SHARE_CREATED"),
+        ))
+        .limit(1);
+    assert.ok(shareNotification, "share creation must enqueue a reader notification");
 
     return {
         readerId,
@@ -130,6 +143,22 @@ async function run() {
             assert.equal(second.successfulOpenCount, 2);
             assert.equal(second.remainingAccesses, 1);
             assert.equal(second.postOpenExpiresAt?.getTime(), originalExpiry);
+
+            await createWriteRequestService({
+                shareCode: fixture.shareCode,
+                readerId: fixture.readerId,
+                proposedContent: "Updated content for notification test",
+                passphrase: fixture.passphrase,
+            });
+            const [writeRequestNotification] = await db
+                .select()
+                .from(notificationOutbox)
+                .where(and(
+                    eq(notificationOutbox.recipientUserId, ownerId),
+                    eq(notificationOutbox.eventType, "WRITE_REQUEST_CREATED"),
+                ))
+                .limit(1);
+            assert.ok(writeRequestNotification, "write request creation must notify the vault owner");
 
             console.log("PASS: successful opens increment access count");
             console.log("PASS: first open starts post-open TTL only once");
@@ -425,6 +454,7 @@ async function run() {
         console.log("\nAll share-access integration tests passed.");
     } finally {
         if (shareIds.length > 0) {
+            await db.delete(writeRequests).where(inArray(writeRequests.shareId, shareIds));
             await db.delete(passphraseAttempts).where(
                 inArray(passphraseAttempts.shareId, shareIds),
             );
